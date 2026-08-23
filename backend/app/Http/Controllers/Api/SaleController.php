@@ -10,6 +10,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Services\ActivityLogger;
 use App\Services\BillingService;
+use App\Services\ReferenceGenerator;
 use App\Services\StockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ class SaleController extends Controller
         private BillingService $billing,
         private ActivityLogger $logger,
         private StockService $stock,
+        private ReferenceGenerator $references,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -89,7 +91,7 @@ class SaleController extends Controller
     private function storeStockSale(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'reference' => ['required', 'string', 'max:100', 'unique:sales,reference'],
+            'reference' => ['nullable', 'string', 'max:100', 'unique:sales,reference'],
             'client_id' => ['required', 'exists:clients,id'],
             'sale_date' => ['required', 'date'],
             'notes' => ['nullable', 'string'],
@@ -99,6 +101,8 @@ class SaleController extends Controller
             'lines.*.quantity_m2' => ['required', 'numeric', 'min:0.01'],
             'lines.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
+
+        $data['reference'] = $data['reference'] ?? $this->references->nextSaleReference();
 
         try {
             $sale = DB::transaction(function () use ($data, $request) {
@@ -194,12 +198,14 @@ class SaleController extends Controller
     private function storeLegacyCredit(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'reference' => ['required', 'string', 'max:100', 'unique:sales,reference'],
+            'reference' => ['nullable', 'string', 'max:100', 'unique:sales,reference'],
             'client_id' => ['required', 'exists:clients,id'],
             'sale_date' => ['required', 'date'],
             'total_amount' => ['required', 'numeric', 'min:0.01'],
             'notes' => ['nullable', 'string'],
         ]);
+
+        $data['reference'] = $data['reference'] ?? $this->references->nextCreditReference();
 
         $totalAmount = round((float) $data['total_amount'], 2);
 

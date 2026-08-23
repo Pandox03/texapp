@@ -23,6 +23,9 @@ export default function InvoicesPage() {
   })
   const [updatingId, setUpdatingId] = useState<number | null>(null)
 
+  const [pdfError, setPdfError] = useState('')
+  const [downloadingId, setDownloadingId] = useState<number | null>(null)
+
   const load = useCallback(() => {
     const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v))
     api.get<Paginated<Invoice>>('/invoices', { params }).then((res) => setInvoices(res.data.data))
@@ -37,15 +40,38 @@ export default function InvoicesPage() {
   }, [load])
 
   async function downloadPdf(invoice: Invoice) {
-    const res = await api.get(`/invoices/${invoice.id}/pdf`, { responseType: 'blob' })
-    const url = URL.createObjectURL(res.data)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${invoice.reference}.pdf`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+    setPdfError('')
+    setDownloadingId(invoice.id)
+    try {
+      const res = await api.get(`/invoices/${invoice.id}/pdf`, {
+        responseType: 'blob',
+        headers: { Accept: 'application/pdf' },
+      })
+
+      const contentType = String(res.headers['content-type'] ?? '')
+      if (contentType.includes('application/json') || res.data.type === 'application/json') {
+        const text = await (res.data as Blob).text()
+        const parsed = JSON.parse(text) as { message?: string }
+        throw new Error(parsed.message ?? t.invoices.pdfError)
+      }
+
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${invoice.reference}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setPdfError(msg || t.invoices.pdfError)
+    } finally {
+      setDownloadingId(null)
+    }
   }
 
   async function updateStatus(invoice: Invoice, status: InvoiceStatus) {
@@ -77,6 +103,12 @@ export default function InvoicesPage() {
         }
       />
 
+      {pdfError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {pdfError}
+        </div>
+      )}
+
       <FilterBar
         fields={[
           { key: 'search', label: t.filters.search, type: 'text', placeholder: 'Réf. ou client...' },
@@ -85,7 +117,7 @@ export default function InvoicesPage() {
             label: t.containers.status,
             type: 'select',
             placeholder: t.common.all,
-            options: (['sent', 'paid', 'unpaid'] as const).map((s) => ({
+            options: (['sent', 'partial', 'paid', 'unpaid'] as const).map((s) => ({
               value: s,
               label: t.invoiceStatus[s],
             })),
@@ -157,11 +189,12 @@ export default function InvoicesPage() {
                     <button
                       type="button"
                       onClick={() => downloadPdf(inv)}
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                      disabled={downloadingId === inv.id}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-50"
                       title={t.invoices.downloadPdf}
                     >
                       <Download size={14} />
-                      PDF
+                      {downloadingId === inv.id ? '…' : 'PDF'}
                     </button>
                   </td>
                 </tr>

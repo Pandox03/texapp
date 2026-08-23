@@ -186,11 +186,11 @@
     $emptyRows = max(0, 8 - $lineCount);
     $headerLogo = $logoHeaderDataUri ?? $logoDataUri;
     $footerParts = array_filter([
-        $company['address'].' - '.strtoupper($company['city']),
+        trim(($company['address'] ?? '').(! empty($company['city']) ? ' - '.strtoupper((string) $company['city']) : '')),
         ! empty($company['phone']) ? 'Tél: '.$company['phone'] : null,
         ! empty($company['email']) ? 'Email: '.$company['email'] : null,
-        'ICE: '.$company['ice'],
-        'RC: '.$company['rc'].' ('.$company['rc_city'].')',
+        ! empty($company['ice']) ? 'ICE: '.$company['ice'] : null,
+        ! empty($company['rc']) ? 'RC: '.$company['rc'].(! empty($company['rc_city']) ? ' ('.$company['rc_city'].')' : '') : null,
         ! empty($company['capital']) ? 'Capital: '.$company['capital'] : null,
         ! empty($company['if']) ? 'IF: '.$company['if'] : null,
         ! empty($company['tp']) ? 'T.P: '.$company['tp'] : null,
@@ -208,9 +208,9 @@
 <div class="page">
     <div class="brand-block">
         @if($headerLogo)
-            <img src="{{ $headerLogo }}" alt="{{ $company['name'] }}">
+            <img src="{{ $headerLogo }}" alt="{{ $company['name'] ?? 'Logo' }}">
         @endif
-        <div class="brand-name">{{ $company['name'] }} {{ $company['legal_form'] }}</div>
+        <div class="brand-name">{{ $company['name'] ?? 'Entreprise' }} {{ $company['legal_form'] ?? '' }}</div>
         @if(! empty($company['email']))
             <div style="margin-top: 2px; font-size: 10px;">{{ $company['email'] }}</div>
         @endif

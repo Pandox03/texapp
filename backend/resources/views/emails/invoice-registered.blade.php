@@ -21,7 +21,7 @@
                 {{ $invoice->reference }}
             </h1>
             <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">
-                Une facture vient d'être enregistrée dans Abrajetex. Le PDF est joint à cet e-mail.
+                Une facture vient d'être enregistrée dans {{ config('company.app_name', config('company.name')) }}. Le PDF est joint à cet e-mail.
             </p>
         </td>
     </tr>
@@ -75,7 +75,7 @@
     <tr>
         <td style="border-radius:10px;background-color:#0d9488;">
             <a href="{{ $appUrl }}" target="_blank" style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
-                Ouvrir Abrajetex →
+                Ouvrir {{ config('company.app_name', config('company.name')) }} →
             </a>
         </td>
     </tr>

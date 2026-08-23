@@ -8,6 +8,7 @@ import {
   Package,
   Palette,
   Receipt,
+  Settings,
   ShoppingCart,
   UserCog,
   Users,
@@ -35,6 +36,7 @@ export default function AdminSidebar({ mobileOpen, onClose }: AdminSidebarProps)
     { to: '/invoices', label: t.nav.invoices, icon: FileText },
     { to: '/payments', label: t.nav.payments, icon: Banknote },
     { to: '/clients', label: t.nav.clients, icon: Users },
+    { to: '/settings', label: t.nav.settings, icon: Settings },
     { to: '/users', label: t.nav.users, icon: UserCog },
     { to: '/logs', label: t.nav.logs, icon: History },
   ]

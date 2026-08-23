@@ -37,6 +37,8 @@ class FabricTypeController extends Controller
             'default_width_cm' => ['nullable', 'integer', 'min:1'],
             'default_gsm' => ['nullable', 'integer', 'min:1'],
             'description' => ['nullable', 'string'],
+            'market_price_m2_mad' => ['nullable', 'numeric', 'min:0'],
+            'target_margin_pct' => ['nullable', 'numeric', 'min:0', 'max:500'],
         ]);
 
         $fabricType = FabricType::create($data);
@@ -65,9 +67,13 @@ class FabricTypeController extends Controller
             'default_width_cm' => ['nullable', 'integer', 'min:1'],
             'default_gsm' => ['nullable', 'integer', 'min:1'],
             'description' => ['nullable', 'string'],
+            'market_price_m2_mad' => ['nullable', 'numeric', 'min:0'],
+            'target_margin_pct' => ['nullable', 'numeric', 'min:0', 'max:500'],
         ]);
 
         $fabricType->update($data);
+
+        Cache::forget('sale_form_options');
 
         $this->logger->log(
             $request->user(),

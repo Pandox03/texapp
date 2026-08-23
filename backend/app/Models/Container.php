@@ -14,12 +14,21 @@ class Container extends Model
         'supplier_reference',
         'status',
         'notes',
+        'purchase_cost_mad',
+        'shipping_cost_mad',
+        'customs_fees_mad',
+        'other_fees_mad',
+        'market_notes',
     ];
 
     protected function casts(): array
     {
         return [
             'arrival_date' => 'date',
+            'purchase_cost_mad' => 'decimal:2',
+            'shipping_cost_mad' => 'decimal:2',
+            'customs_fees_mad' => 'decimal:2',
+            'other_fees_mad' => 'decimal:2',
         ];
     }
 

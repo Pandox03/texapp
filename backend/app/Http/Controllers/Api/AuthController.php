@@ -31,7 +31,7 @@ class AuthController extends Controller
             ]);
         }
 
-        $token = $user->createToken('abrajetex')->plainTextToken;
+        $token = $user->createToken('texflow')->plainTextToken;
 
         $this->logger->log(
             $user,

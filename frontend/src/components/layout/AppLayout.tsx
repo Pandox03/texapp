@@ -5,6 +5,7 @@ import AdminSidebar from './AdminSidebar'
 import ComptableSidebar from './ComptableSidebar'
 import SecretaireSidebar from './SecretaireSidebar'
 import Topbar from './Topbar'
+import AiAssistant from '../ai/AiAssistant'
 
 export default function AppLayout() {
   const { user, loading, isSecretaire, isComptable } = useAuth()
@@ -39,6 +40,7 @@ export default function AppLayout() {
         <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
           <Outlet />
         </main>
+        <AiAssistant />
       </div>
     </div>
   )

@@ -70,6 +70,11 @@ class ContainerController extends Controller
             'supplier_reference' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', 'in:in_transit,arrived,processing,closed'],
             'notes' => ['nullable', 'string'],
+            'purchase_cost_mad' => ['nullable', 'numeric', 'min:0'],
+            'shipping_cost_mad' => ['nullable', 'numeric', 'min:0'],
+            'customs_fees_mad' => ['nullable', 'numeric', 'min:0'],
+            'other_fees_mad' => ['nullable', 'numeric', 'min:0'],
+            'market_notes' => ['nullable', 'string'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.fabric_type_id' => ['required', 'exists:fabric_types,id'],
             'items.*.color_code' => ['nullable', 'string', 'max:50'],
@@ -164,6 +169,11 @@ class ContainerController extends Controller
             'supplier_reference' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', 'in:in_transit,arrived,processing,closed'],
             'notes' => ['nullable', 'string'],
+            'purchase_cost_mad' => ['nullable', 'numeric', 'min:0'],
+            'shipping_cost_mad' => ['nullable', 'numeric', 'min:0'],
+            'customs_fees_mad' => ['nullable', 'numeric', 'min:0'],
+            'other_fees_mad' => ['nullable', 'numeric', 'min:0'],
+            'market_notes' => ['nullable', 'string'],
         ]);
 
         $container->update($data);

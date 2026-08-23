@@ -9,6 +9,7 @@ use App\Models\Sale;
 use App\Services\ActivityLogger;
 use App\Services\AdminNotificationService;
 use App\Services\BillingService;
+use App\Services\ReferenceGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,7 @@ class PaymentController extends Controller
         private BillingService $billing,
         private ActivityLogger $logger,
         private AdminNotificationService $adminNotifications,
+        private ReferenceGenerator $references,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -73,7 +75,7 @@ class PaymentController extends Controller
         $data = $request->validate([
             'client_id' => ['required', 'exists:clients,id'],
             'sale_id' => ['nullable', 'exists:sales,id'],
-            'reference' => ['required', 'string', 'max:100', 'unique:payments,reference'],
+            'reference' => ['nullable', 'string', 'max:100', 'unique:payments,reference'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'payment_date' => ['required', 'date'],
             'method' => ['required', 'in:especes,cheque,virement,effet,autre'],
@@ -88,6 +90,8 @@ class PaymentController extends Controller
                 'max:5120',
             ],
         ]);
+
+        $data['reference'] = $data['reference'] ?? $this->references->nextPaymentReference();
 
         $client = Client::findOrFail($data['client_id']);
         $sale = null;

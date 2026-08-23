@@ -1,4 +1,5 @@
 import {
+  Banknote,
   ClipboardList,
   FilePlus,
   FileText,
@@ -33,6 +34,7 @@ export default function SecretaireSidebar({ mobileOpen, onClose }: SecretaireSid
     { to: '/stock', label: t.nav.stock, icon: Layers },
     { to: '/invoices', label: t.nav.invoices, icon: FileText },
     { to: '/invoices/generer', label: t.secretaire.generateInvoice, icon: FilePlus },
+    { to: '/payments', label: t.nav.payments, icon: Banknote },
   ]
 
   return (

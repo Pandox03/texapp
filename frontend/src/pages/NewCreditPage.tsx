@@ -1,9 +1,11 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../lib/api'
+import { extractApiError } from '../lib/errors'
 import { useI18n } from '../context/LocaleContext'
 import type { Client } from '../types'
 import Card from '../components/ui/Card'
+import FormField from '../components/ui/FormField'
 import PageHeader from '../components/ui/PageHeader'
 
 export default function NewCreditPage() {
@@ -12,8 +14,8 @@ export default function NewCreditPage() {
   const [searchParams] = useSearchParams()
   const preselectedClientId = searchParams.get('client_id') ?? ''
   const [clients, setClients] = useState<Client[]>([])
+  const [clientSearch, setClientSearch] = useState('')
   const [credit, setCredit] = useState({
-    reference: `CRD-${Date.now()}`,
     client_id: '',
     sale_date: new Date().toISOString().slice(0, 10),
     total_amount: '',
@@ -36,24 +38,28 @@ export default function NewCreditPage() {
       .finally(() => setLoadingOptions(false))
   }, [t.credit.loadError, preselectedClientId])
 
+  const filteredClients = useMemo(() => {
+    const q = clientSearch.trim().toLowerCase()
+    if (!q) return clients
+    return clients.filter((c) => c.name.toLowerCase().includes(q))
+  }, [clients, clientSearch])
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
     setSubmitting(true)
 
     try {
-      await api.post('/sales', {
+      const { data } = await api.post<{ id: number; client_id: number }>('/sales', {
         sale_type: 'legacy_credit',
-        reference: credit.reference,
         client_id: Number(credit.client_id),
         sale_date: credit.sale_date,
         total_amount: Number(credit.total_amount),
         notes: credit.notes || null,
       })
-      navigate('/sales')
+      navigate(`/invoices/generer?sale_id=${data.id}`)
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setError(msg ?? t.credit.error)
+      setError(extractApiError(err, t.credit.error))
     } finally {
       setSubmitting(false)
     }
@@ -70,75 +76,63 @@ export default function NewCreditPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <div className="grid gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">{t.common.reference}</label>
-              <input
-                value={credit.reference}
-                onChange={(e) => setCredit({ ...credit, reference: e.target.value })}
-                className="w-full rounded-xl border border-border px-4 py-3"
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">{t.common.date}</label>
-              <input
-                type="date"
-                value={credit.sale_date}
-                onChange={(e) => setCredit({ ...credit, sale_date: e.target.value })}
-                className="w-full rounded-xl border border-border px-4 py-3"
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">{t.sales.client}</label>
-              <select
-                value={credit.client_id}
-                onChange={(e) => setCredit({ ...credit, client_id: e.target.value })}
-                className="w-full rounded-xl border border-border px-4 py-3"
-                required
-              >
-                <option value="">{t.credit.selectClient}</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>{client.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">{t.credit.totalAmount}</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={credit.total_amount}
-                onChange={(e) => setCredit({ ...credit, total_amount: e.target.value })}
-                className="w-full rounded-xl border border-border px-4 py-3 text-lg font-semibold"
-                placeholder="0.00"
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">{t.common.notes}</label>
-              <textarea
-                value={credit.notes}
-                onChange={(e) => setCredit({ ...credit, notes: e.target.value })}
-                className="w-full rounded-xl border border-border px-4 py-3"
-                rows={2}
-                placeholder={t.credit.notesPlaceholder}
-              />
-            </div>
+            <FormField
+              type="date"
+              label={t.common.date}
+              value={credit.sale_date}
+              onChange={(e) => setCredit({ ...credit, sale_date: e.target.value })}
+              required
+            />
+            <FormField
+              type="search"
+              label={t.sales.client}
+              placeholder={t.newSale.clientSearch}
+              value={clientSearch}
+              onChange={(e) => setClientSearch(e.target.value)}
+            />
+            <FormField
+              as="select"
+              label={t.credit.selectClient}
+              value={credit.client_id}
+              onChange={(e) => setCredit({ ...credit, client_id: e.target.value })}
+              required
+            >
+              <option value="">{t.credit.selectClient}</option>
+              {filteredClients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </FormField>
+            <FormField
+              type="number"
+              step="0.01"
+              min="0.01"
+              label={t.credit.totalAmount}
+              value={credit.total_amount}
+              onChange={(e) => setCredit({ ...credit, total_amount: e.target.value })}
+              placeholder="0.00"
+              required
+            />
+            <FormField
+              as="textarea"
+              label={t.common.notes}
+              value={credit.notes}
+              onChange={(e) => setCredit({ ...credit, notes: e.target.value })}
+              rows={2}
+              placeholder={t.credit.notesPlaceholder}
+            />
           </div>
 
-          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {t.credit.noStockHint}
-          </p>
-          <p className="mt-2 text-sm text-muted">{t.credit.invoiceHint}</p>
+          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{t.credit.noStockHint}</p>
+          <p className="mt-2 text-xs text-muted">{t.newSale.autoRefHint}</p>
         </Card>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="whitespace-pre-line text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !credit.client_id}
           className="cursor-pointer rounded-xl bg-teal-500 px-6 py-3 font-semibold text-white disabled:opacity-50"
         >
           {submitting ? t.credit.saving : t.credit.submit}

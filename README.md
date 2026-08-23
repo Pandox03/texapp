@@ -1,6 +1,6 @@
-# AbrajTex — Textile Import Management
+# TexFlow — Textile Import & Wholesale Management
 
-Full-stack inventory and sales management for **ABRAJE TEX**, a textile import wholesaler (containers from China, fabric roll sales to clients).
+A configurable full-stack app for **textile importers and wholesalers**: containers, roll stock, m² sales, invoicing, payments, and legacy credits. Each company deploys its own instance and customizes branding, legal info, and tax settings from the admin panel.
 
 ## Stack
 
@@ -10,43 +10,36 @@ Full-stack inventory and sales management for **ABRAJE TEX**, a textile import w
 | Frontend | React 19 + Vite + TypeScript + Tailwind CSS 4 |
 | Database | MySQL 8 |
 
-## Features
+## Core features
 
-- Container arrival & stock by fabric type
-- Roll-based sales with manual m² quantities
-- Invoices (PDF) with HT / TVA / TTC breakdown
-- Clients, payments, dashboard, activity log
+- **Containers** — import shipments with purchase, shipping, customs, and other costs
+- **Stock** — roll-level inventory by fabric type and color (m²)
+- **Sales** — sell rolls with unit price and quantity; AI pricing hints (optional)
+- **Legacy credits** — receivables not tied to current stock
+- **Clients** — CRM with separate stock vs credit balances
+- **Invoices** — PDF with configurable HT / TVA / TTC
+- **Payments** — FIFO allocation, proof upload, credit-targeted payments
+- **Company settings** — logo, name, legal details, tax rate (admin UI)
+- **Roles** — admin, secrétaire (operations), comptable (finance)
+- **Bilingual UI** — French + Arabic
+
+## Customize for your company
+
+1. Deploy the app (see below)
+2. Log in as admin
+3. Open **Paramètres** → set company name, logo, ICE/RC, address, TVA rate
+4. Replace `frontend/public/logo.png` or upload logo in settings
+5. Set `OPENROUTER_API_KEY` for AI assistant (optional)
+
+Environment defaults in `backend/.env` are seeded into `company_settings` on first `db:seed`.
 
 ## Local development
 
-### 1. MySQL + phpMyAdmin (Docker)
+### 1. MySQL (Docker)
 
 ```bash
 docker compose --env-file .env.docker up -d
 ```
-
-- **MySQL:** `localhost:3306`
-- **phpMyAdmin:** http://localhost:8080
-
-Log in to phpMyAdmin with:
-
-| Field | Value |
-|-------|-------|
-| Server | `mysql` (auto-filled) |
-| User | `root` |
-| Password | `rootsecret` (from `.env.docker`) |
-
-Or use the app user: `abrajetex` / `secret`.
-
-**Export SQL (create tables dump):**
-
-1. Open http://localhost:8080
-2. Select the `abrajetex` database in the left sidebar
-3. Click **Export**
-4. Choose **Quick** (structure + data) or **Custom** → check **Structure** only if you only want `CREATE TABLE` statements
-5. Format: **SQL** → **Export**
-
-You can import that `.sql` file on another server via phpMyAdmin **Import** or `mysql < dump.sql`.
 
 ### 2. Backend
 
@@ -57,18 +50,11 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Set in `.env`:
-
-```env
-DB_PASSWORD=secret
-ADMIN_PASSWORD=password
-FRONTEND_URL=http://localhost:5173
-```
-
-Then:
+Set `DB_PASSWORD`, `ADMIN_PASSWORD`, `FRONTEND_URL` in `.env`, then:
 
 ```bash
 php artisan migrate --seed
+php artisan storage:link
 php artisan serve
 ```
 
@@ -85,73 +71,29 @@ npm run dev
 
 App: **http://localhost:5173**
 
-## Production deployment
-
-### Backend
-
-1. Copy `backend/.env.example` → `backend/.env`
-2. Set at minimum:
-
-```env
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://your-api-domain.com
-
-DB_*=...
-FRONTEND_URL=https://your-app-domain.com
-
-ADMIN_EMAIL=admin@your-domain.com
-ADMIN_PASSWORD=your-strong-password
-```
-
-3. Run:
+## Production
 
 ```bash
 cd backend
 composer install --no-dev --optimize-autoloader
-php artisan key:generate
 php artisan migrate --force
 php artisan db:seed --force
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
 php artisan storage:link
+php artisan config:cache
+
+cd ../frontend
+npm ci && npm run build
 ```
 
-4. Point the web server document root to `backend/public`.
-
-5. Place the company logo at `backend/public/images/logo.png` (used on invoice PDFs).
-
-### Frontend
-
-```bash
-cd frontend
-cp .env.example .env
-```
-
-Set `VITE_API_URL` to your API URL (e.g. `https://api.example.com/api`), then:
-
-```bash
-npm ci
-npm run build
-```
-
-Serve the `frontend/dist` folder with your web server (or copy it behind the same domain as the API with a reverse proxy).
-
-### After deploy
-
-- Log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`
-- Create additional users from the admin panel if needed
-- **Do not** run seeders again in production unless you intend to reset the admin password
+Serve `frontend/dist` and point API to `backend/public`.
 
 ## Project structure
 
 ```
-AbrajTex/
+TexFlow/
 ├── backend/          Laravel API
 ├── frontend/         React SPA
-├── docker-compose.yml
-├── .env.docker       MySQL credentials for Docker
+├── docs/             Documentation
 └── README.md
 ```
 

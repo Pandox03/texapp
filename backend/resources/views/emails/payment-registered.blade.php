@@ -84,7 +84,7 @@
     <tr>
         <td style="border-radius:10px;background-color:#0d9488;">
             <a href="{{ $appUrl }}" target="_blank" style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
-                Ouvrir Abrajetex →
+                Ouvrir {{ config('company.app_name', config('company.name')) }} →
             </a>
         </td>
     </tr>

@@ -1,10 +1,11 @@
 import { FormEvent, Fragment, useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Banknote, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Banknote, Bot, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import api from '../lib/api'
+import { extractApiError } from '../lib/errors'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../context/LocaleContext'
-import type { Client, ClientProfile, Invoice, InvoiceStatus, Payment, Sale } from '../types'
+import type { AiClientSummary, Client, ClientProfile, Invoice, InvoiceStatus, Payment, Sale } from '../types'
 import { toInputDate } from '../lib/format'
 import Card from '../components/ui/Card'
 import { InvoiceStatusSelect } from '../components/ui/InvoiceStatusSelect'
@@ -14,12 +15,16 @@ type Tab = 'orders' | 'credits' | 'payments' | 'invoices'
 
 export default function ClientDetailPage() {
   const { id } = useParams()
-  const { isAdmin, isSecretaire } = useAuth()
+  const [searchParams] = useSearchParams()
+  const initialTab = (searchParams.get('tab') as Tab | null) ?? 'orders'
+  const { isAdmin, isSecretaire, isComptable } = useAuth()
   const canEditClient = isAdmin || isSecretaire
-  const canRecordPayment = isAdmin || isSecretaire
-  const { t, formatDateShort } = useI18n()
+  const canRecordPayment = isAdmin || isSecretaire || isComptable
+  const { t, formatDateShort, locale } = useI18n()
   const [profile, setProfile] = useState<ClientProfile | null>(null)
-  const [tab, setTab] = useState<Tab>('orders')
+  const [tab, setTab] = useState<Tab>(
+    ['orders', 'credits', 'payments', 'invoices'].includes(initialTab) ? initialTab : 'orders',
+  )
   const [showEditForm, setShowEditForm] = useState(false)
   const [showPaymentForm, setShowPaymentForm] = useState(false)
   const [paymentTargetCreditId, setPaymentTargetCreditId] = useState<number | null>(null)
@@ -60,6 +65,27 @@ export default function ClientDetailPage() {
   })
   const [creditError, setCreditError] = useState('')
   const [submittingCredit, setSubmittingCredit] = useState(false)
+  const [aiSummary, setAiSummary] = useState<AiClientSummary | null>(null)
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false)
+  const [aiSummaryError, setAiSummaryError] = useState('')
+  const [showAiSummary, setShowAiSummary] = useState(false)
+
+  const loadAiSummary = useCallback(async (refresh = false) => {
+    if (!id) return
+    setAiSummaryError('')
+    setAiSummaryLoading(true)
+    try {
+      const { data } = await api.get<AiClientSummary>(`/ai/clients/${id}/summary`, {
+        params: { locale, refresh: refresh ? 1 : undefined },
+      })
+      setAiSummary(data)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setAiSummaryError(msg ?? t.ai.summaryError)
+    } finally {
+      setAiSummaryLoading(false)
+    }
+  }, [id, locale, t.ai.summaryError])
 
   const load = useCallback(() => {
     api.get<ClientProfile>(`/clients/${id}`).then((res) => setProfile(res.data))
@@ -68,6 +94,10 @@ export default function ClientDetailPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (profile && showAiSummary) loadAiSummary()
+  }, [profile?.client.id, locale, loadAiSummary, showAiSummary])
 
   function openEditForm(client: Client) {
     setEditForm({
@@ -134,7 +164,7 @@ export default function ClientDetailPage() {
     try {
       const formData = new FormData()
       formData.append('client_id', String(profile.client.id))
-      formData.append('reference', paymentForm.reference)
+      if (paymentForm.reference.trim()) formData.append('reference', paymentForm.reference.trim())
       formData.append('amount', paymentForm.amount)
       formData.append('payment_date', paymentForm.payment_date)
       formData.append('method', paymentForm.method)
@@ -160,8 +190,7 @@ export default function ClientDetailPage() {
       if (paidCreditId) setExpandedCreditId(paidCreditId)
       load()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setPaymentError(msg ?? 'Erreur lors de l\'enregistrement du paiement.')
+      setPaymentError(extractApiError(err, t.clients.paymentError))
     } finally {
       setSubmittingPayment(false)
     }
@@ -278,9 +307,12 @@ export default function ClientDetailPage() {
 
   const { client, balance, stock_sales, credits, payments, invoices } = profile
 
-  const salesPayments = payments.filter((p) => !p.sale_id)
+  const salesPayments = payments.filter((p) => {
+    if (!p.sale_id) return true
+    return !credits.some((c) => c.id === p.sale_id)
+  })
   const creditPaymentsBySaleId = payments.reduce<Record<number, Payment[]>>((acc, p) => {
-    if (p.sale_id) {
+    if (p.sale_id && credits.some((c) => c.id === p.sale_id)) {
       ;(acc[p.sale_id] ??= []).push(p)
     }
     return acc
@@ -305,9 +337,12 @@ export default function ClientDetailPage() {
 
   return (
     <div>
-      <Link to="/clients" className="mb-4 inline-flex cursor-pointer items-center gap-2 text-sm text-teal-600 hover:underline">
+      <Link
+        to={isComptable && !isAdmin && !isSecretaire ? '/invoices' : '/clients'}
+        className="mb-4 inline-flex cursor-pointer items-center gap-2 text-sm text-teal-600 hover:underline"
+      >
         <ArrowLeft size={16} />
-        {t.clients.title}
+        {isComptable && !isAdmin && !isSecretaire ? t.clients.backToInvoices : t.clients.title}
       </Link>
 
       <div className="mb-6 grid gap-4">
@@ -420,6 +455,59 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
+      <Card className="mb-6 border-teal-200 bg-teal-50/30">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-2">
+            <Bot size={18} className="text-teal-700" />
+            <h2 className="font-semibold text-navy-900">{t.ai.clientSummary}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (showAiSummary) {
+                setShowAiSummary(false)
+              } else {
+                setShowAiSummary(true)
+                if (!aiSummary) loadAiSummary()
+              }
+            }}
+            className="cursor-pointer rounded-xl border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-surface"
+          >
+            {showAiSummary ? t.clients.hideAiSummary : t.clients.showAiSummary}
+          </button>
+        </div>
+        {showAiSummary && (
+          <div className="mt-3">
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => loadAiSummary(true)}
+                disabled={aiSummaryLoading}
+                className="cursor-pointer text-sm font-medium text-teal-700 hover:underline disabled:opacity-50"
+              >
+                {aiSummaryLoading ? t.ai.summaryLoading : t.ai.refreshSummary}
+              </button>
+            </div>
+            {aiSummaryError && <p className="text-sm text-red-600">{aiSummaryError}</p>}
+            {!aiSummaryError && aiSummaryLoading && !aiSummary && (
+              <p className="text-sm text-muted">{t.ai.summaryLoading}</p>
+            )}
+            {aiSummary && (
+              <div className="space-y-3 text-sm">
+                <p className="leading-relaxed text-navy-900">{aiSummary.summary}</p>
+                {aiSummary.highlights.length > 0 && (
+                  <ul className="list-disc space-y-1 ps-5 text-muted">
+                    {aiSummary.highlights.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           {tabs.map((tabItem) => (
@@ -486,26 +574,32 @@ export default function ClientDetailPage() {
 
             <div className="grid items-start gap-4 md:grid-cols-3">
               <div>
-                <label className="mb-1 block text-sm font-medium">{t.clients.paymentRef}</label>
-                <input
-                  value={paymentForm.reference}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
-                  className="h-10 w-full rounded-xl border border-border px-3 text-sm"
-                  required
-                />
-              </div>
-              <div>
                 <label className="mb-1 block text-sm font-medium">{t.common.amount}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min={0.01}
-                  max={paymentMax}
-                  value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                  className="h-10 w-full rounded-xl border border-border px-3 text-sm"
-                  required
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0.01}
+                    max={paymentMax}
+                    value={paymentForm.amount}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                    className="h-10 w-full rounded-xl border border-border px-3 text-sm"
+                    required
+                  />
+                  {paymentMax > 0.01 && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentForm({ ...paymentForm, amount: String(Math.round(paymentMax * 100) / 100) })}
+                      className="shrink-0 cursor-pointer rounded-xl border border-teal-300 bg-teal-50 px-3 text-xs font-medium text-teal-800 hover:bg-teal-100"
+                      title={t.clients.payFullAmount}
+                    >
+                      {t.clients.payFullAmount}
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted">
+                  {t.clients.remaining}: {paymentMax.toLocaleString('fr-FR')} MAD max
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium">{t.common.date}</label>

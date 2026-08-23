@@ -27,6 +27,8 @@ export interface FabricType {
   default_width_cm?: number | null
   default_gsm?: number | null
   description?: string | null
+  market_price_m2_mad?: string | number | null
+  target_margin_pct?: string | number | null
   parent?: FabricType | null
   children?: FabricType[]
 }
@@ -58,6 +60,11 @@ export interface Container {
   supplier_reference?: string | null
   status: 'in_transit' | 'arrived' | 'processing' | 'closed'
   notes?: string | null
+  purchase_cost_mad?: string | number | null
+  shipping_cost_mad?: string | number | null
+  customs_fees_mad?: string | number | null
+  other_fees_mad?: string | number | null
+  market_notes?: string | null
   items_count?: number
   rolls_count?: number
   items?: ContainerItem[]
@@ -146,7 +153,7 @@ export interface Sale {
   payments?: Payment[]
 }
 
-export type InvoiceStatus = 'sent' | 'paid' | 'unpaid'
+export type InvoiceStatus = 'sent' | 'paid' | 'unpaid' | 'partial'
 
 export interface Invoice {
   id: number
@@ -356,4 +363,30 @@ export interface FilterValues {
   color_code?: string
   container_status?: string
   method?: string
+}
+
+export interface AiClientSummary {
+  summary: string
+  highlights: string[]
+}
+
+export interface AiPricingHint {
+  suggested_price_m2_mad: number | null
+  min_price_m2_mad: number | null
+  max_price_m2_mad: number | null
+  landed_cost_m2_mad: number | null
+  target_margin_pct: number | null
+  summary: string
+  factors: string[]
+}
+
+/** Cost + margin pricing (no AI) from containers. */
+export interface PricingBasis {
+  fabric_type_id: number
+  fabric_type_name: string
+  landed_cost_m2_mad: number | null
+  target_margin_pct: number
+  suggested_price_m2_mad: number | null
+  market_price_m2_mad: number | null
+  has_container_costs: boolean
 }

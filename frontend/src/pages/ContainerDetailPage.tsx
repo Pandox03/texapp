@@ -18,6 +18,15 @@ export default function ContainerDetailPage() {
     quantity_m2: '',
     estimated_rolls: '',
   })
+  const [costForm, setCostForm] = useState({
+    purchase_cost_mad: '',
+    shipping_cost_mad: '',
+    customs_fees_mad: '',
+    other_fees_mad: '',
+    market_notes: '',
+  })
+  const [savingCosts, setSavingCosts] = useState(false)
+  const [costMessage, setCostMessage] = useState('')
 
   async function load() {
     const [containerRes, typesRes] = await Promise.all([
@@ -26,11 +35,41 @@ export default function ContainerDetailPage() {
     ])
     setContainer(containerRes.data)
     setFabricTypes(typesRes.data)
+    const c = containerRes.data
+    setCostForm({
+      purchase_cost_mad: c.purchase_cost_mad != null ? String(c.purchase_cost_mad) : '',
+      shipping_cost_mad: c.shipping_cost_mad != null ? String(c.shipping_cost_mad) : '',
+      customs_fees_mad: c.customs_fees_mad != null ? String(c.customs_fees_mad) : '',
+      other_fees_mad: c.other_fees_mad != null ? String(c.other_fees_mad) : '',
+      market_notes: c.market_notes ?? '',
+    })
   }
 
   useEffect(() => {
     load()
   }, [id])
+
+  async function handleSaveCosts(e: FormEvent) {
+    e.preventDefault()
+    setSavingCosts(true)
+    setCostMessage('')
+
+    try {
+      await api.put(`/containers/${id}`, {
+        purchase_cost_mad: costForm.purchase_cost_mad ? Number(costForm.purchase_cost_mad) : null,
+        shipping_cost_mad: costForm.shipping_cost_mad ? Number(costForm.shipping_cost_mad) : null,
+        customs_fees_mad: costForm.customs_fees_mad ? Number(costForm.customs_fees_mad) : null,
+        other_fees_mad: costForm.other_fees_mad ? Number(costForm.other_fees_mad) : null,
+        market_notes: costForm.market_notes || null,
+      })
+      setCostMessage(t.ai.costsSaved)
+      load()
+    } catch {
+      setCostMessage(t.ai.error)
+    } finally {
+      setSavingCosts(false)
+    }
+  }
 
   async function handleAddItem(e: FormEvent) {
     e.preventDefault()
@@ -81,6 +120,21 @@ export default function ContainerDetailPage() {
           </Card>
         </div>
       )}
+
+      <Card className="mb-6">
+        <h2 className="mb-4 text-lg font-semibold">{t.ai.costSection}</h2>
+        <form onSubmit={handleSaveCosts} className="grid gap-4 md:grid-cols-2">
+          <input type="number" step="0.01" min="0" placeholder={t.ai.purchaseCost} value={costForm.purchase_cost_mad} onChange={(e) => setCostForm({ ...costForm, purchase_cost_mad: e.target.value })} className="rounded-xl border border-border px-4 py-3" />
+          <input type="number" step="0.01" min="0" placeholder={t.ai.shippingCost} value={costForm.shipping_cost_mad} onChange={(e) => setCostForm({ ...costForm, shipping_cost_mad: e.target.value })} className="rounded-xl border border-border px-4 py-3" />
+          <input type="number" step="0.01" min="0" placeholder={t.ai.customsFees} value={costForm.customs_fees_mad} onChange={(e) => setCostForm({ ...costForm, customs_fees_mad: e.target.value })} className="rounded-xl border border-border px-4 py-3" />
+          <input type="number" step="0.01" min="0" placeholder={t.ai.otherFees} value={costForm.other_fees_mad} onChange={(e) => setCostForm({ ...costForm, other_fees_mad: e.target.value })} className="rounded-xl border border-border px-4 py-3" />
+          <textarea placeholder={t.ai.marketNotePlaceholder} value={costForm.market_notes} onChange={(e) => setCostForm({ ...costForm, market_notes: e.target.value })} className="rounded-xl border border-border px-4 py-3 md:col-span-2" rows={2} />
+          {costMessage && <p className="md:col-span-2 text-sm text-teal-700">{costMessage}</p>}
+          <button type="submit" disabled={savingCosts} className="cursor-pointer rounded-xl bg-navy-900 px-4 py-3 font-semibold text-white md:col-span-2 disabled:opacity-50">
+            {savingCosts ? t.common.loading : t.ai.saveCosts}
+          </button>
+        </form>
+      </Card>
 
       <p className="mb-4 text-sm text-muted">
         Les quantités ci-dessous alimentent le stock global par type de tissu.

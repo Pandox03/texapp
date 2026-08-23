@@ -18,13 +18,19 @@ class BillingService
     /** @var array<int, array<int, float>> */
     private array $fifoSalesCache = [];
 
+    public function defaultTaxRate(): float
+    {
+        return (float) (config('company.tax_rate') ?? self::DEFAULT_TAX_RATE);
+    }
+
     /**
      * Split a TTC amount into HT, TVA and TTC (amounts are tax-inclusive).
      *
      * @return array{subtotal: float, tax_rate: float, tax_amount: float, total: float}
      */
-    public function splitTtc(float $amountTtc, float $taxRate = self::DEFAULT_TAX_RATE): array
+    public function splitTtc(float $amountTtc, ?float $taxRate = null): array
     {
+        $taxRate ??= $this->defaultTaxRate();
         $amountTtc = round(max(0, $amountTtc), 2);
         $ht = round($amountTtc / (1 + ($taxRate / 100)), 2);
         $tax = round($amountTtc - $ht, 2);
@@ -37,7 +43,7 @@ class BillingService
         ];
     }
 
-    public function htFromTtc(float $amountTtc, float $taxRate = self::DEFAULT_TAX_RATE): float
+    public function htFromTtc(float $amountTtc, ?float $taxRate = null): float
     {
         return $this->splitTtc($amountTtc, $taxRate)['subtotal'];
     }
@@ -72,8 +78,8 @@ class BillingService
     }
 
     /**
-     * Allocate confirmed untargeted payments to stock sales only (FIFO by sale date).
-     * Payments with sale_id (credit payments) are excluded.
+     * Allocate confirmed untargeted payments to stock sales only (oldest unpaid first).
+     * Payments with sale_id (targeted) are excluded from automatic allocation.
      *
      * @return array<int, float> sale_id => allocated amount
      */
@@ -149,6 +155,14 @@ class BillingService
             ->sum('amount'), 2);
     }
 
+    public function targetedPaidAmount(Sale $sale): float
+    {
+        return round((float) Payment::query()
+            ->where('sale_id', $sale->id)
+            ->where('status', 'confirmed')
+            ->sum('amount'), 2);
+    }
+
     public function salePaidAmount(Sale $sale, ?array $allocations = null): float
     {
         if ($sale->sale_type === 'legacy_credit') {
@@ -156,8 +170,9 @@ class BillingService
         }
 
         $allocations ??= $this->fifoStockSaleAllocations($sale->client);
+        $fifo = (float) ($allocations[$sale->id] ?? 0);
 
-        return round((float) ($allocations[$sale->id] ?? 0), 2);
+        return round($fifo + $this->targetedPaidAmount($sale), 2);
     }
 
     public function saleBalanceDue(Sale $sale, ?array $allocations = null): float
@@ -314,14 +329,14 @@ class BillingService
         $paid = $this->invoicePaidAmount($invoice, $allocations);
         $total = (float) $invoice->total;
 
-        if ($paid >= $total - 0.01) {
-            $invoice->update(['status' => 'paid']);
+        $status = match (true) {
+            $paid >= $total - 0.01 => 'paid',
+            $paid > 0.01 => 'partial',
+            default => 'unpaid',
+        };
 
-            return;
-        }
-
-        if ($paid > 0) {
-            $invoice->update(['status' => 'unpaid']);
+        if ($invoice->status !== $status) {
+            $invoice->update(['status' => $status]);
         }
     }
 
@@ -360,18 +375,15 @@ class BillingService
 
         if ($sale) {
             if ($sale->client_id !== $client->id) {
-                throw new InvalidArgumentException('Ce crédit n\'appartient pas à ce client.');
-            }
-
-            if ($sale->sale_type !== 'legacy_credit') {
-                throw new InvalidArgumentException('Seuls les crédits historiques peuvent recevoir un paiement ciblé.');
+                throw new InvalidArgumentException('Cette vente n\'appartient pas à ce client.');
             }
 
             $due = $this->saleBalanceDue($sale);
+            $label = $sale->sale_type === 'legacy_credit' ? 'ce crédit' : 'cette vente';
 
             if ($amount > $due + 0.01) {
                 throw new InvalidArgumentException(
-                    "Le montant dépasse le solde dû sur ce crédit ({$due} MAD)."
+                    "Le montant dépasse le solde dû sur {$label} ({$due} MAD)."
                 );
             }
 
@@ -412,7 +424,18 @@ class BillingService
             ->sum('total_amount');
 
         $saleAllocations = $this->fifoStockSaleAllocations($client);
-        $paidOnStockSales = round(array_sum($saleAllocations), 2);
+        $paidOnStockFifo = round(array_sum($saleAllocations), 2);
+
+        $paidOnStockTargeted = round((float) Payment::query()
+            ->where('client_id', $client->id)
+            ->where('status', 'confirmed')
+            ->whereNotNull('sale_id')
+            ->whereHas('sale', fn ($q) => $q->where(function ($q2) {
+                $q2->where('sale_type', 'stock')->orWhereNull('sale_type');
+            }))
+            ->sum('amount'), 2);
+
+        $paidOnStockSales = round($paidOnStockFifo + $paidOnStockTargeted, 2);
 
         $paidOnCredits = round((float) Payment::query()
             ->where('client_id', $client->id)

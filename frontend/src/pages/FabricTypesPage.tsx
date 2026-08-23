@@ -16,6 +16,8 @@ export default function FabricTypesPage() {
     default_width_cm: '150',
     default_gsm: '150',
     parent_id: '',
+    market_price_m2_mad: '',
+    target_margin_pct: '25',
   })
 
   async function load() {
@@ -35,9 +37,19 @@ export default function FabricTypesPage() {
       default_width_cm: form.default_width_cm ? Number(form.default_width_cm) : null,
       default_gsm: form.default_gsm ? Number(form.default_gsm) : null,
       parent_id: form.parent_id ? Number(form.parent_id) : null,
+      market_price_m2_mad: form.market_price_m2_mad ? Number(form.market_price_m2_mad) : null,
+      target_margin_pct: form.target_margin_pct ? Number(form.target_margin_pct) : null,
     })
     setShowForm(false)
-    setForm({ name: '', composition: '', default_width_cm: '150', default_gsm: '150', parent_id: '' })
+    setForm({
+      name: '',
+      composition: '',
+      default_width_cm: '150',
+      default_gsm: '150',
+      parent_id: '',
+      market_price_m2_mad: '',
+      target_margin_pct: '25',
+    })
     load()
   }
 
@@ -98,6 +110,24 @@ export default function FabricTypesPage() {
               onChange={(e) => setForm({ ...form, default_gsm: e.target.value })}
               className="rounded-xl border border-border px-4 py-3"
             />
+            <input
+              placeholder={t.fabricTypes.marketPrice}
+              value={form.market_price_m2_mad}
+              onChange={(e) => setForm({ ...form, market_price_m2_mad: e.target.value })}
+              className="rounded-xl border border-border px-4 py-3"
+              type="number"
+              min={0}
+              step="0.01"
+            />
+            <input
+              placeholder={t.fabricTypes.targetMargin}
+              value={form.target_margin_pct}
+              onChange={(e) => setForm({ ...form, target_margin_pct: e.target.value })}
+              className="rounded-xl border border-border px-4 py-3"
+              type="number"
+              min={0}
+              step="0.1"
+            />
             <button type="submit" className="cursor-pointer rounded-xl bg-navy-900 px-4 py-3 font-semibold text-white md:col-span-2">
               {t.fabricTypes.save}
             </button>
@@ -113,8 +143,10 @@ export default function FabricTypesPage() {
                 <th className="px-3 py-3">{t.common.name}</th>
                 <th className="px-3 py-3">{t.fabricTypes.parent}</th>
                 <th className="px-3 py-3">{t.fabricTypes.composition}</th>
-                <th className="px-3 py-3">{t.fabricTypes.width}</th>
-                <th className="px-3 py-3">{t.fabricTypes.gsm}</th>
+                <th className="hidden px-3 py-3 sm:table-cell">{t.fabricTypes.width}</th>
+                <th className="hidden px-3 py-3 md:table-cell">{t.fabricTypes.gsm}</th>
+                <th className="px-3 py-3">{t.fabricTypes.marketPrice}</th>
+                <th className="hidden px-3 py-3 lg:table-cell">{t.fabricTypes.targetMargin}</th>
               </tr>
             </thead>
             <tbody>
@@ -123,8 +155,16 @@ export default function FabricTypesPage() {
                   <td className="px-3 py-3 font-medium">{type.name}</td>
                   <td className="px-3 py-3">{type.parent?.name ?? t.common.dash}</td>
                   <td className="px-3 py-3">{type.composition ?? t.common.dash}</td>
-                  <td className="px-3 py-3">{type.default_width_cm ? `${type.default_width_cm} cm` : t.common.dash}</td>
-                  <td className="px-3 py-3">{type.default_gsm ?? t.common.dash}</td>
+                  <td className="hidden px-3 py-3 sm:table-cell">
+                    {type.default_width_cm ? `${type.default_width_cm} cm` : t.common.dash}
+                  </td>
+                  <td className="hidden px-3 py-3 md:table-cell">{type.default_gsm ?? t.common.dash}</td>
+                  <td className="px-3 py-3">
+                    {type.market_price_m2_mad != null ? `${type.market_price_m2_mad} MAD` : t.common.dash}
+                  </td>
+                  <td className="hidden px-3 py-3 lg:table-cell">
+                    {type.target_margin_pct != null ? `${type.target_margin_pct}%` : t.common.dash}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -16,7 +16,17 @@ class FabricType extends Model
         'default_width_cm',
         'default_gsm',
         'description',
+        'market_price_m2_mad',
+        'target_margin_pct',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'market_price_m2_mad' => 'decimal:2',
+            'target_margin_pct' => 'decimal:2',
+        ];
+    }
 
     public function parent(): BelongsTo
     {

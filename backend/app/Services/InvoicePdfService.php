@@ -12,6 +12,7 @@ class InvoicePdfService
     public function __construct(
         private BrandAssetService $brand,
         private BillingService $billing,
+        private CompanySettingsService $companySettings,
     ) {}
 
     public function generate(Invoice $invoice): DomPdf
@@ -29,7 +30,7 @@ class InvoicePdfService
 
         return Pdf::loadView('invoices.pdf', [
             'invoice' => $invoice,
-            'company' => config('company'),
+            'company' => $this->companySettings->config(),
             'logoDataUri' => $this->brand->logoDataUri(),
             'logoHeaderDataUri' => $this->brand->logoHeaderDataUri(),
             'amountInWords' => FrenchAmountInWords::format((float) $invoice->total),

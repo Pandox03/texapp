@@ -15,7 +15,7 @@ import {
 } from '../locales'
 import * as formatLib from '../lib/format'
 
-const STORAGE_KEY = 'abrajetex-locale'
+const STORAGE_KEY = 'texflow-locale'
 
 interface LocaleContextValue {
   locale: LocaleCode

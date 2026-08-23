@@ -21,7 +21,7 @@
                                         <img src="{{ $logoDataUri }}" alt="{{ config('company.name') }}" height="52" style="display:block;height:52px;width:auto;max-width:220px;">
                                     @else
                                         <span style="font-size:24px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">
-                                            Abraje<span style="color:#5eead4;">tex</span>
+                                            {{ config('company.app_name', config('company.name')) }}
                                         </span>
                                     @endif
                                 </td>
@@ -64,7 +64,7 @@
             </table>
 
             <p style="margin:20px 0 0;font-size:11px;color:#94a3b8;text-align:center;">
-                E-mail automatique — Abrajetex · Import textile &amp; gestion de stock
+                E-mail automatique — {{ config('company.app_name', config('company.name')) }} · {{ config('company.tagline', 'Import textile & gestion de stock') }}
             </p>
         </td>
     </tr>

@@ -15,6 +15,7 @@ import NewSalePage from './pages/NewSalePage'
 import NewCreditPage from './pages/NewCreditPage'
 import PaymentsPage from './pages/PaymentsPage'
 import SalesPage from './pages/SalesPage'
+import SettingsPage from './pages/SettingsPage'
 import StockPage from './pages/StockPage'
 import UsersPage from './pages/UsersPage'
 import ProfilePage from './pages/ProfilePage'
@@ -31,11 +32,8 @@ export default function App() {
 
         <Route element={<RoleRoute roles={['admin', 'secretaire', 'comptable']} />}>
           <Route path="/invoices" element={<InvoicesPage />} />
-          <Route path="/clients/:id" element={<ClientDetailPage />} />
-        </Route>
-
-        <Route element={<RoleRoute roles={['admin', 'comptable']} />}>
           <Route path="/payments" element={<PaymentsPage />} />
+          <Route path="/clients/:id" element={<ClientDetailPage />} />
         </Route>
 
         <Route element={<RoleRoute roles={['admin', 'secretaire']} />}>
@@ -51,6 +49,7 @@ export default function App() {
         </Route>
 
         <Route element={<RoleRoute roles={['admin']} />}>
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/logs" element={<LogsPage />} />
         </Route>

@@ -1,6 +1,8 @@
 import type { LucideIcon } from 'lucide-react'
 import { X, UserCircle } from 'lucide-react'
+import { useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { useBranding } from '../../context/BrandingContext'
 import { useI18n } from '../../context/LocaleContext'
 
 export type SidebarLink = {
@@ -23,12 +25,33 @@ type SidebarShellProps = {
   userName?: string
 }
 
+function BrandLogo({ logoUrl, appName }: { logoUrl: string | null; appName: string }) {
+  const [hidden, setHidden] = useState(false)
+
+  if (!logoUrl || hidden) {
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-sm font-bold">
+        {appName.slice(0, 2).toUpperCase()}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={logoUrl}
+      alt={appName}
+      className="h-10 w-10 rounded-lg bg-white object-contain p-1"
+      onError={() => setHidden(true)}
+    />
+  )
+}
+
 export default function SidebarShell({
   mobileOpen,
   onClose,
   bgClass,
   activeClass,
-  accentClass = 'text-mint-400',
+  accentClass: _accentClass = 'text-mint-400',
   subtitle,
   links,
   footerIcon: FooterIcon,
@@ -36,26 +59,17 @@ export default function SidebarShell({
   userName,
 }: SidebarShellProps) {
   const { t } = useI18n()
+  const { branding } = useBranding()
 
   function SidebarContent() {
     return (
       <>
         <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
-          <div className="flex items-center gap-3">
-            <img
-              src="/logo.png"
-              alt="Abrajetex"
-              className="h-10 w-10 rounded-lg bg-white object-contain p-1"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none'
-              }}
-            />
-            <div>
-              <p className="text-lg font-bold leading-tight">
-                <span>Abraje</span>
-                <span className={accentClass}>tex</span>
-              </p>
-              <p className="text-xs text-white/60">{subtitle}</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <BrandLogo logoUrl={branding.logo_url} appName={branding.app_name} />
+            <div className="min-w-0">
+              <p className="truncate text-lg font-bold leading-tight">{branding.app_name}</p>
+              <p className="truncate text-xs text-white/60">{subtitle}</p>
             </div>
           </div>
           <button

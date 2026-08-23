@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, FileCheck } from 'lucide-react'
 import api from '../lib/api'
+import { extractApiError } from '../lib/errors'
 import { splitTtc } from '../lib/tax'
+import { useBranding } from '../context/BrandingContext'
 import { useI18n } from '../context/LocaleContext'
 import type { Invoice, Sale } from '../types'
 import Card from '../components/ui/Card'
@@ -10,7 +12,10 @@ import PageHeader from '../components/ui/PageHeader'
 
 export default function GenerateInvoicePage() {
   const { t, formatDate } = useI18n()
+  const { branding } = useBranding()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const preselectedSaleId = searchParams.get('sale_id') ?? ''
   const [sales, setSales] = useState<Sale[]>([])
   const [selectedSaleId, setSelectedSaleId] = useState('')
   const [amountTtc, setAmountTtc] = useState('')
@@ -26,21 +31,31 @@ export default function GenerateInvoicePage() {
   useEffect(() => {
     api
       .get<Sale[]>('/invoices/sales-for-invoice')
-      .then((res) => setSales(res.data))
+      .then((res) => {
+        setSales(res.data)
+        if (preselectedSaleId) {
+          const match = res.data.find((s) => String(s.id) === preselectedSaleId)
+          if (match && (match.remaining_to_invoice ?? 0) > 0) {
+            setSelectedSaleId(String(match.id))
+            setAmountTtc(String(match.remaining_to_invoice))
+          }
+        }
+      })
       .catch(() => setError(t.secretaire.loadSalesError))
       .finally(() => setLoading(false))
-  }, [t.secretaire.loadSalesError])
+  }, [t.secretaire.loadSalesError, preselectedSaleId])
 
   const billableSales = sales.filter((s) => (s.remaining_to_invoice ?? 0) > 0)
 
-  const selectedSale = sales.find((s) => s.id === Number(selectedSaleId))
+  const selectedSale = billableSales.find((s) => s.id === Number(selectedSaleId))
   const remaining = selectedSale?.remaining_to_invoice ?? 0
   const billedTtc = Number(amountTtc || remaining)
-  const breakdown = useMemo(() => splitTtc(billedTtc), [billedTtc])
+  const taxRate = branding.tax_rate ?? 20
+  const breakdown = useMemo(() => splitTtc(billedTtc, taxRate), [billedTtc, taxRate])
 
   function handleSaleChange(saleId: string) {
     setSelectedSaleId(saleId)
-    const sale = sales.find((s) => s.id === Number(saleId))
+    const sale = billableSales.find((s) => s.id === Number(saleId))
     const saleRemaining = sale?.remaining_to_invoice ?? 0
     if (saleRemaining <= 0) {
       setSelectedSaleId('')
@@ -68,8 +83,8 @@ export default function GenerateInvoicePage() {
       setAmountTtc('')
       api.get<Sale[]>('/invoices/sales-for-invoice').then((res) => setSales(res.data))
       setTimeout(() => navigate('/invoices'), 2000)
-    } catch {
-      setError(t.secretaire.generateError)
+    } catch (err: unknown) {
+      setError(extractApiError(err, t.secretaire.generateError))
     } finally {
       setSubmitting(false)
     }
@@ -99,15 +114,13 @@ export default function GenerateInvoicePage() {
                 <option value="">
                   {loading ? t.common.loading : billableSales.length === 0 ? t.secretaire.noPendingInvoices : t.secretaire.chooseSale}
                 </option>
-                {sales.map((sale) => {
+                {billableSales.map((sale) => {
                   const saleRemaining = Number(sale.remaining_to_invoice ?? 0)
-                  const disabled = saleRemaining <= 0
+                  const typeLabel = sale.sale_type === 'legacy_credit' ? t.sales.legacyBadge : t.nav.sales
                   return (
-                    <option key={sale.id} value={sale.id} disabled={disabled}>
-                      {sale.reference} — {sale.client?.name} —{' '}
-                      {disabled
-                        ? t.secretaire.saleFullyInvoiced
-                        : `${t.secretaire.remainingShort} ${saleRemaining.toLocaleString('fr-FR')} MAD ${t.invoices.amountTtc}`}
+                    <option key={sale.id} value={sale.id}>
+                      [{typeLabel}] {sale.reference} — {sale.client?.name} — {t.secretaire.remainingShort}{' '}
+                      {saleRemaining.toLocaleString('fr-FR')} MAD {t.invoices.amountTtc}
                     </option>
                   )
                 })}
@@ -228,7 +241,7 @@ export default function GenerateInvoicePage() {
                 <dd>{breakdown.ht.toLocaleString('fr-FR')} MAD</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-muted">{t.invoices.tax} (20%)</dt>
+                <dt className="text-muted">{t.invoices.tax} ({taxRate}%)</dt>
                 <dd>{breakdown.tax.toLocaleString('fr-FR')} MAD</dd>
               </div>
               <div className="flex justify-between text-base font-bold text-navy-900">
