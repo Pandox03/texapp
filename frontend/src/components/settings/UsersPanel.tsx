@@ -1,12 +1,11 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import api from '../lib/api'
-import { useAuth } from '../context/AuthContext'
-import { useI18n } from '../context/LocaleContext'
-import type { Paginated, User } from '../types'
-import Card from '../components/ui/Card'
-import FilterBar from '../components/ui/FilterBar'
-import PageHeader from '../components/ui/PageHeader'
+import api from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
+import { useI18n } from '../../context/LocaleContext'
+import type { Paginated, User } from '../../types'
+import Card from '../ui/Card'
+import FilterBar from '../ui/FilterBar'
 
 const emptyForm = {
   name: '',
@@ -15,7 +14,7 @@ const emptyForm = {
   role: 'secretaire' as User['role'],
 }
 
-export default function UsersPage() {
+export default function UsersPanel() {
   const { user: currentUser } = useAuth()
   const { t } = useI18n()
   const [users, setUsers] = useState<User[]>([])
@@ -64,20 +63,17 @@ export default function UsersPage() {
 
   return (
     <div>
-      <PageHeader
-        title={t.users.title}
-        description={t.users.description}
-        action={
-          <button
-            type="button"
-            onClick={() => setShowForm(!showForm)}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white"
-          >
-            <Plus size={16} />
-            {t.users.new}
-          </button>
-        }
-      />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">{t.users.description}</p>
+        <button
+          type="button"
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white"
+        >
+          <Plus size={16} />
+          {t.users.new}
+        </button>
+      </div>
 
       <FilterBar
         fields={[
@@ -154,6 +150,12 @@ export default function UsersPage() {
             </button>
           </form>
         </Card>
+      )}
+
+      {error && !showForm && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
       )}
 
       <Card>

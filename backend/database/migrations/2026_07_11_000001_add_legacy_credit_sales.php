@@ -17,7 +17,13 @@ return new class extends Migration
             $table->dropForeign(['fabric_roll_id']);
         });
 
-        DB::statement('ALTER TABLE sale_items MODIFY fabric_roll_id BIGINT UNSIGNED NULL');
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE sale_items MODIFY fabric_roll_id BIGINT UNSIGNED NULL');
+        } else {
+            Schema::table('sale_items', function (Blueprint $table) {
+                $table->unsignedBigInteger('fabric_roll_id')->nullable()->change();
+            });
+        }
 
         Schema::table('sale_items', function (Blueprint $table) {
             $table->foreign('fabric_roll_id')->references('id')->on('fabric_rolls')->cascadeOnDelete();
@@ -32,7 +38,13 @@ return new class extends Migration
             $table->dropForeign(['fabric_roll_id']);
         });
 
-        DB::statement('ALTER TABLE sale_items MODIFY fabric_roll_id BIGINT UNSIGNED NOT NULL');
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE sale_items MODIFY fabric_roll_id BIGINT UNSIGNED NOT NULL');
+        } else {
+            Schema::table('sale_items', function (Blueprint $table) {
+                $table->unsignedBigInteger('fabric_roll_id')->nullable(false)->change();
+            });
+        }
 
         Schema::table('sale_items', function (Blueprint $table) {
             $table->foreign('fabric_roll_id')->references('id')->on('fabric_rolls')->cascadeOnDelete();

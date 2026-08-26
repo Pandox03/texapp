@@ -72,8 +72,12 @@ class InvoicePdfService
                 ?? ($invoice->sale->sale_type === 'legacy_credit' ? 'Crédit client (historique)' : 'Tissu');
 
             if (! isset($groups[$typeId])) {
+                $unit = \App\Support\QuantityUnit::normalize(
+                    $item->unit ?? $item->fabricRoll?->unit ?? $item->fabricType?->unit ?? $item->fabricRoll?->fabricType?->unit
+                );
                 $groups[$typeId] = [
                     'fabric' => $fabric,
+                    'unit' => $unit,
                     'roll_count' => 0,
                     'quantity_m2' => 0.0,
                     'line_total_ttc' => 0.0,
@@ -107,6 +111,8 @@ class InvoicePdfService
 
             $lines[] = [
                 'fabric' => $group['fabric'],
+                'unit' => $group['unit'] ?? 'm2',
+                'unit_label' => \App\Support\QuantityUnit::label($group['unit'] ?? null),
                 'roll_count' => $group['roll_count'],
                 'quantity_m2' => round($group['quantity_m2'], 2),
                 'unit_price' => round($lineHt / $qty, 2),

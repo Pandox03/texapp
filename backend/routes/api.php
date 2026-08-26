@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ContainerItemController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\FabricRollController;
 use App\Http\Controllers\Api\FabricTypeController;
+use App\Http\Controllers\Api\FournisseurController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\SaleController;
@@ -60,6 +61,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('clients', [ClientController::class, 'index']);
         Route::get('clients/{client}', [ClientController::class, 'show']);
+        Route::get('clients/{client}/statement.pdf', [ClientController::class, 'downloadStatementPdf']);
+        Route::get('clients/{client}/statement.xls', [ClientController::class, 'downloadStatementExcel']);
     });
 
     // Secrétaire + Admin
@@ -81,6 +84,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('fabric-types', [FabricTypeController::class, 'store']);
         Route::put('fabric-types/{fabric_type}', [FabricTypeController::class, 'update']);
 
+        Route::get('fournisseurs', [FournisseurController::class, 'index']);
+        Route::post('fournisseurs', [FournisseurController::class, 'store']);
+        Route::put('fournisseurs/{fournisseur}', [FournisseurController::class, 'update']);
+        Route::delete('fournisseurs/{fournisseur}', [FournisseurController::class, 'destroy']);
+
         Route::get('sales/form-options', [SaleFormController::class, 'formOptions']);
         Route::get('sales/stock-availability', [SaleFormController::class, 'stockAvailability']);
         Route::get('sales/pricing-basis', [SaleFormController::class, 'pricingBasis']);
@@ -94,6 +102,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('stock', [StockController::class, 'index']);
         Route::get('stock/rolls', [StockController::class, 'rolls']);
+        Route::get('stock/returns', [StockController::class, 'returns']);
+        Route::get('stock/returns/returnable/{sale}', [StockController::class, 'returnableLines']);
+        Route::post('stock/returns', [StockController::class, 'storeReturn']);
+        Route::post('stock/returns/full', [StockController::class, 'storeFullReturn']);
+        Route::delete('stock/returns/{stockReturn}', [StockController::class, 'destroyReturn']);
     });
 
     // Admin only

@@ -15,6 +15,8 @@ class DashboardService
 {
     private const LOW_STOCK_M2 = 500;
 
+    private const LOW_STOCK_KG = 200;
+
     public function __construct(
         private BillingService $billing,
         private StockService $stock,
@@ -202,11 +204,12 @@ class DashboardService
         }
 
         foreach (array_slice($this->lowStockAlerts(), 0, 3) as $line) {
+            $unitLabel = \App\Support\QuantityUnit::label($line['unit'] ?? null);
             $actions[] = [
                 'type' => 'low_stock',
-                'severity' => $line['available_m2'] < 100 ? 'high' : 'medium',
+                'severity' => $line['available_m2'] < ($line['unit'] === 'kg' ? 50 : 100) ? 'high' : 'medium',
                 'label' => $line['fabric_type'],
-                'detail' => "Il reste {$line['available_rolls']} rouleau(x) · {$line['available_m2']} m² disponibles",
+                'detail' => "Il reste {$line['available_rolls']} rouleau(x) · {$line['available_m2']} {$unitLabel} disponibles",
                 'amount' => null,
                 'link' => '/stock',
                 'entity_id' => $line['fabric_type_id'],
@@ -292,6 +295,7 @@ class DashboardService
                 $byType[$typeId] = [
                     'fabric_type_id' => $typeId,
                     'name' => FabricType::find($typeId)?->name ?? 'Tissu',
+                    'unit' => $line['unit'] ?? 'm2',
                     'total_m2' => 0.0,
                     'available_m2' => 0.0,
                     'sold_m2' => 0.0,
@@ -304,10 +308,11 @@ class DashboardService
 
         $result = collect($byType)
             ->map(function ($row) {
+                $threshold = ($row['unit'] ?? 'm2') === 'kg' ? self::LOW_STOCK_KG : self::LOW_STOCK_M2;
                 $row['total_m2'] = round($row['total_m2'], 2);
                 $row['available_m2'] = round($row['available_m2'], 2);
                 $row['sold_m2'] = round($row['sold_m2'], 2);
-                $row['is_low'] = $row['available_m2'] < self::LOW_STOCK_M2;
+                $row['is_low'] = $row['available_m2'] < $threshold;
                 $row['usage_pct'] = $row['total_m2'] > 0
                     ? round(($row['sold_m2'] / $row['total_m2']) * 100, 1)
                     : 0;
@@ -328,13 +333,18 @@ class DashboardService
     private function lowStockAlerts(): array
     {
         return collect($this->stock->globalStockLines())
-            ->filter(fn ($line) => $line['available_m2'] > 0 && $line['available_m2'] < self::LOW_STOCK_M2)
+            ->filter(function ($line) {
+                $threshold = ($line['unit'] ?? 'm2') === 'kg' ? self::LOW_STOCK_KG : self::LOW_STOCK_M2;
+
+                return $line['available_m2'] > 0 && $line['available_m2'] < $threshold;
+            })
             ->map(function ($line) {
                 $fabricType = FabricType::find($line['fabric_type_id']);
 
                 return [
                     'fabric_type_id' => $line['fabric_type_id'],
                     'fabric_type' => $fabricType?->name ?? 'Tissu',
+                    'unit' => $line['unit'] ?? 'm2',
                     'available_m2' => $line['available_m2'],
                     'available_rolls' => $line['available_rolls'],
                     'total_m2' => $line['total_m2'],

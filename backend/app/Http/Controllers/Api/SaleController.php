@@ -99,6 +99,7 @@ class SaleController extends Controller
             'lines.*.fabric_type_id' => ['required', 'exists:fabric_types,id'],
             'lines.*.roll_count' => ['required', 'integer', 'min:1'],
             'lines.*.quantity_m2' => ['required', 'numeric', 'min:0.01'],
+            'lines.*.unit' => ['nullable', 'in:m2,kg'],
             'lines.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
 
@@ -125,23 +126,36 @@ class SaleController extends Controller
 
                 foreach ($data['lines'] as $lineData) {
                     $fabricType = FabricType::query()->findOrFail($lineData['fabric_type_id']);
-                    $lineM2 = round((float) $lineData['quantity_m2'], 2);
+                    $unit = \App\Support\QuantityUnit::normalize($lineData['unit'] ?? $fabricType->unit);
+                    $lineQty = round((float) $lineData['quantity_m2'], 2);
                     $rollCount = (int) $lineData['roll_count'];
                     $widthCm = (int) ($fabricType->default_width_cm ?? 150);
-                    $baseM2PerRoll = floor(($lineM2 / $rollCount) * 100) / 100;
-                    $m2Assigned = 0.0;
+                    $isKg = $unit === \App\Support\QuantityUnit::KG;
+                    $gsm = $fabricType->default_gsm ? (int) $fabricType->default_gsm : null;
+
+                    if ($isKg && (! $gsm || $gsm < 1)) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Le grammage (g/m²) est requis pour vendre « %s » en kg.',
+                            $fabricType->name,
+                        ));
+                    }
+
+                    $baseQtyPerRoll = floor(($lineQty / $rollCount) * 100) / 100;
+                    $qtyAssigned = 0.0;
 
                     for ($i = 1; $i <= $rollCount; $i++) {
                         $rollSequence++;
                         $rollNumber = sprintf('%s-R%03d', $data['reference'], $rollSequence);
-                        $m2ForRoll = $i === $rollCount
-                            ? round($lineM2 - $m2Assigned, 2)
-                            : $baseM2PerRoll;
-                        $m2Assigned += $m2ForRoll;
+                        $qtyForRoll = $i === $rollCount
+                            ? round($lineQty - $qtyAssigned, 2)
+                            : $baseQtyPerRoll;
+                        $qtyAssigned += $qtyForRoll;
 
-                        $lengthM = $widthCm > 0
-                            ? round($m2ForRoll / ($widthCm / 100), 2)
-                            : 50;
+                        $lengthM = $isKg
+                            ? 0
+                            : ($widthCm > 0
+                                ? round($qtyForRoll / ($widthCm / 100), 2)
+                                : 50);
 
                         $roll = FabricRoll::create([
                             'container_id' => null,
@@ -150,7 +164,11 @@ class SaleController extends Controller
                             'roll_number' => $rollNumber,
                             'width_cm' => $widthCm,
                             'length_m' => $lengthM,
-                            'quantity_m2' => $m2ForRoll,
+                            'quantity_m2' => $qtyForRoll,
+                            'unit' => $unit,
+                            'net_weight_kg' => $isKg
+                                ? $qtyForRoll
+                                : ($gsm ? \App\Support\QuantityUnit::toKg($qtyForRoll, \App\Support\QuantityUnit::M2, $gsm) : null),
                             'gsm' => $fabricType->default_gsm,
                             'composition' => $fabricType->composition,
                             'status' => 'sold',
@@ -158,13 +176,14 @@ class SaleController extends Controller
                             'sold_at' => now(),
                         ]);
 
-                        $lineTotal = round($lineData['unit_price'] * $m2ForRoll, 2);
+                        $lineTotal = round($lineData['unit_price'] * $qtyForRoll, 2);
 
                         SaleItem::create([
                             'sale_id' => $sale->id,
                             'fabric_roll_id' => $roll->id,
                             'unit_price' => $lineData['unit_price'],
-                            'quantity_m2' => $m2ForRoll,
+                            'quantity_m2' => $qtyForRoll,
+                            'unit' => $unit,
                             'line_total' => $lineTotal,
                         ]);
 

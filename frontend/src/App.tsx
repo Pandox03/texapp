@@ -5,19 +5,16 @@ import ClientDetailPage from './pages/ClientDetailPage'
 import ClientsPage from './pages/ClientsPage'
 import ContainerDetailPage from './pages/ContainerDetailPage'
 import ContainersPage from './pages/ContainersPage'
-import FabricTypesPage from './pages/FabricTypesPage'
 import GenerateInvoicePage from './pages/GenerateInvoicePage'
 import HomePage from './pages/HomePage'
 import InvoicesPage from './pages/InvoicesPage'
 import LoginPage from './pages/LoginPage'
 import LogsPage from './pages/LogsPage'
 import NewSalePage from './pages/NewSalePage'
-import NewCreditPage from './pages/NewCreditPage'
 import PaymentsPage from './pages/PaymentsPage'
 import SalesPage from './pages/SalesPage'
 import SettingsPage from './pages/SettingsPage'
 import StockPage from './pages/StockPage'
-import UsersPage from './pages/UsersPage'
 import ProfilePage from './pages/ProfilePage'
 
 export default function App() {
@@ -43,14 +40,13 @@ export default function App() {
           <Route path="/invoices/generer" element={<GenerateInvoicePage />} />
           <Route path="/sales" element={<SalesPage />} />
           <Route path="/sales/new" element={<NewSalePage />} />
-          <Route path="/credits/new" element={<NewCreditPage />} />
           <Route path="/stock" element={<StockPage />} />
-          <Route path="/fabric-types" element={<FabricTypesPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/fabric-types" element={<Navigate to="/settings?tab=articles" replace />} />
         </Route>
 
         <Route element={<RoleRoute roles={['admin']} />}>
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/users" element={<UsersPage />} />
+          <Route path="/users" element={<Navigate to="/settings?tab=users" replace />} />
           <Route path="/logs" element={<LogsPage />} />
         </Route>
       </Route>

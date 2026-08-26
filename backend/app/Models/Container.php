@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Container extends Model
 {
     protected $fillable = [
         'reference',
+        'type',
+        'fournisseur_id',
         'arrival_date',
         'origin',
         'supplier_reference',
@@ -32,6 +35,11 @@ class Container extends Model
         ];
     }
 
+    public function fournisseur(): BelongsTo
+    {
+        return $this->belongsTo(Fournisseur::class);
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(ContainerItem::class);
@@ -40,5 +48,15 @@ class Container extends Model
     public function rolls(): HasMany
     {
         return $this->hasMany(FabricRoll::class);
+    }
+
+    public function isLocal(): bool
+    {
+        return $this->type === 'local';
+    }
+
+    public function isContainerAchat(): bool
+    {
+        return $this->type === 'container';
     }
 }

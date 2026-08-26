@@ -13,12 +13,11 @@ function invoiceRemaining(inv: Invoice): number {
   return Math.max(0, Number(inv.total) - paid)
 }
 
-/** Factures sans paiement enregistré (reste à payer, jamais encaissées). */
+/** Factures avec un reste à payer (y compris partiellement encaissées). */
 export function unpaidInvoices(invoices: Invoice[]): Invoice[] {
   return invoices.filter((inv) => {
-    const paid = Number(inv.paid_amount ?? 0)
     const remaining = invoiceRemaining(inv)
-    return remaining > 0.01 && paid <= 0 && inv.status !== 'paid'
+    return remaining > 0.01 && inv.status !== 'paid'
   })
 }
 

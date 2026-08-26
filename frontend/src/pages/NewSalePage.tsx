@@ -5,6 +5,7 @@ import api from '../lib/api'
 import { extractApiError } from '../lib/errors'
 import { useI18n } from '../context/LocaleContext'
 import type { Client, FabricType, PricingBasis } from '../types'
+import { pricePerUnitLabel, unitLabel } from '../lib/units'
 import Card from '../components/ui/Card'
 import FormField from '../components/ui/FormField'
 import PageHeader from '../components/ui/PageHeader'
@@ -13,6 +14,7 @@ interface SaleLine {
   fabric_type_id: string
   roll_count: string
   quantity_m2: string
+  unit: 'm2' | 'kg'
   unit_price: string
   margin_pct: string
   m2Manual: boolean
@@ -22,7 +24,10 @@ interface StockAvailability {
   found: boolean
   fabric_type_id?: number
   fabric_type_name?: string
+  unit?: string
+  gsm?: number | null
   available_m2: number
+  available_kg?: number | null
   total_m2: number
   sold_m2: number
   total_rolls: number
@@ -35,15 +40,21 @@ const emptyLine = (): SaleLine => ({
   fabric_type_id: '',
   roll_count: '1',
   quantity_m2: '',
+  unit: 'm2',
   unit_price: '',
   margin_pct: '25',
   m2Manual: false,
 })
 
-function suggestedM2(rollCount: string, stock?: StockAvailability): string {
+function suggestedQty(rollCount: string, stock?: StockAvailability, unit: 'm2' | 'kg' = 'm2'): string {
   const rolls = Number(rollCount)
   if (!stock || !Number.isFinite(rolls) || rolls <= 0) return ''
-  return String(Math.round(rolls * stock.avg_m2_per_roll * 100) / 100)
+  let perRoll = stock.avg_m2_per_roll
+  if (unit === 'kg') {
+    if (!stock.gsm) return ''
+    perRoll = (stock.avg_m2_per_roll * stock.gsm) / 1000
+  }
+  return String(Math.round(rolls * perRoll * 100) / 100)
 }
 
 function sellFromCost(landed: number, marginPct: number): number {
@@ -51,7 +62,8 @@ function sellFromCost(landed: number, marginPct: number): number {
 }
 
 export default function NewSalePage() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
+  const loc = locale === 'ar' ? 'ar' : 'fr'
   const navigate = useNavigate()
   const [clients, setClients] = useState<Client[]>([])
   const [clientSearch, setClientSearch] = useState('')
@@ -144,9 +156,9 @@ export default function NewSalePage() {
         if (line.m2Manual || !line.fabric_type_id) return line
         const stock = stockByType[line.fabric_type_id]
         if (!stock) return line
-        const nextM2 = suggestedM2(line.roll_count, stock)
-        if (nextM2 === line.quantity_m2) return line
-        return { ...line, quantity_m2: nextM2 }
+        const nextQty = suggestedQty(line.roll_count, stock, line.unit)
+        if (nextQty === line.quantity_m2) return line
+        return { ...line, quantity_m2: nextQty }
       }),
     )
   }, [stockByType])
@@ -156,14 +168,26 @@ export default function NewSalePage() {
     for (const line of lines) {
       if (!line.fabric_type_id) continue
       const rolls = Number(line.roll_count)
-      const m2 = Number(line.quantity_m2)
+      const qty = Number(line.quantity_m2)
       if (!Number.isFinite(rolls) || rolls <= 0) continue
-      if (!totals[line.fabric_type_id]) totals[line.fabric_type_id] = { rolls: 0, m2: 0 }
-      totals[line.fabric_type_id].rolls += rolls
-      if (Number.isFinite(m2) && m2 > 0) totals[line.fabric_type_id].m2 += m2
+      const stock = stockByType[line.fabric_type_id]
+      const gsm = stock?.gsm ?? fabricTypes.find((f) => String(f.id) === line.fabric_type_id)?.default_gsm
+      let asM2 = qty
+      if (Number.isFinite(qty) && qty > 0) {
+        if (line.unit === 'kg') {
+          if (!gsm) continue
+          asM2 = (qty * 1000) / Number(gsm)
+        }
+        if (!totals[line.fabric_type_id]) totals[line.fabric_type_id] = { rolls: 0, m2: 0 }
+        totals[line.fabric_type_id].rolls += rolls
+        totals[line.fabric_type_id].m2 += asM2
+      } else if (!totals[line.fabric_type_id]) {
+        totals[line.fabric_type_id] = { rolls: 0, m2: 0 }
+        totals[line.fabric_type_id].rolls += rolls
+      }
     }
     return totals
-  }, [lines])
+  }, [lines, stockByType, fabricTypes])
 
   const grandTotal = useMemo(
     () =>
@@ -183,16 +207,22 @@ export default function NewSalePage() {
         if (field === 'quantity_m2') updated.m2Manual = true
         if (field === 'fabric_type_id') {
           updated.m2Manual = false
-          const stock = stockByType[String(value)]
-          updated.quantity_m2 = suggestedM2(updated.roll_count, stock)
           const fabric = fabricTypes.find((type) => String(type.id) === String(value))
+          updated.unit = fabric?.unit === 'kg' ? 'kg' : 'm2'
+          const stock = stockByType[String(value)]
+          updated.quantity_m2 = suggestedQty(updated.roll_count, stock, updated.unit)
           if (fabric?.target_margin_pct != null) {
             updated.margin_pct = String(fabric.target_margin_pct)
           }
         }
+        if (field === 'unit') {
+          updated.m2Manual = false
+          const stock = stockByType[updated.fabric_type_id]
+          updated.quantity_m2 = suggestedQty(updated.roll_count, stock, value as 'm2' | 'kg')
+        }
         if (field === 'roll_count' && !line.m2Manual) {
           const stock = stockByType[updated.fabric_type_id]
-          updated.quantity_m2 = suggestedM2(String(value), stock)
+          updated.quantity_m2 = suggestedQty(String(value), stock, updated.unit)
         }
         return updated
       }),
@@ -203,13 +233,15 @@ export default function NewSalePage() {
     const line = lines[index]
     const stock = line.fabric_type_id ? stockByType[line.fabric_type_id] : undefined
     if (!stock?.found) return
+    const maxQty =
+      line.unit === 'kg' && stock.available_kg != null ? stock.available_kg : stock.available_m2
     setLines((prev) =>
       prev.map((l, i) =>
         i === index
           ? {
               ...l,
               roll_count: String(stock.available_rolls),
-              quantity_m2: String(stock.available_m2),
+              quantity_m2: String(maxQty),
               m2Manual: true,
             }
           : l,
@@ -254,11 +286,13 @@ export default function NewSalePage() {
       )
     }
     if (requested.m2 > stock.available_m2 + 0.01) {
+      const u = unitLabel(stock.unit, loc)
       messages.push(
         t.newSale.stockExceededM2
           .replace('{fabric}', fabric)
           .replace('{available}', stock.available_m2.toLocaleString('fr-FR'))
-          .replace('{requested}', requested.m2.toLocaleString('fr-FR')),
+          .replace('{requested}', requested.m2.toLocaleString('fr-FR'))
+          .replaceAll('{unit}', u),
       )
     }
     return messages
@@ -277,6 +311,7 @@ export default function NewSalePage() {
           fabric_type_id: Number(line.fabric_type_id),
           roll_count: Number(line.roll_count),
           quantity_m2: Number(line.quantity_m2),
+          unit: line.unit,
           unit_price: Number(line.unit_price),
         })),
       })
@@ -347,6 +382,9 @@ export default function NewSalePage() {
         {lines.map((line, index) => {
           const stock = line.fabric_type_id ? stockByType[line.fabric_type_id] : undefined
           const pricing = line.fabric_type_id ? pricingByType[line.fabric_type_id] : undefined
+          const fabric = fabricTypes.find((type) => String(type.id) === line.fabric_type_id)
+          const lineUnit = line.unit
+          const uLabel = unitLabel(lineUnit, loc)
           const lineM2 = Number(line.quantity_m2) || 0
           const lineTotal = lineM2 > 0 && line.unit_price ? lineM2 * Number(line.unit_price) : 0
           const margin = Number(line.margin_pct)
@@ -354,6 +392,7 @@ export default function NewSalePage() {
             pricing?.landed_cost_m2_mad != null && Number.isFinite(margin) && margin >= 0
               ? sellFromCost(pricing.landed_cost_m2_mad, margin)
               : null
+          const kgDisabled = !stock?.gsm && !fabric?.default_gsm
 
           return (
             <Card key={index}>
@@ -390,6 +429,32 @@ export default function NewSalePage() {
                   ))}
                 </FormField>
 
+                <div className="md:col-span-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateLine(index, 'unit', 'm2')}
+                    className={`cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold ${
+                      line.unit === 'm2' ? 'bg-teal-500 text-white' : 'border border-border'
+                    }`}
+                  >
+                    m²
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateLine(index, 'unit', 'kg')}
+                    disabled={kgDisabled}
+                    title={kgDisabled ? t.newSale.gsmRequiredForKg : undefined}
+                    className={`cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                      line.unit === 'kg' ? 'bg-teal-500 text-white' : 'border border-border'
+                    }`}
+                  >
+                    kg
+                  </button>
+                  {kgDisabled && line.fabric_type_id && (
+                    <span className="self-center text-xs text-amber-700">{t.newSale.gsmRequiredForKg}</span>
+                  )}
+                </div>
+
                 <FormField
                   type="number"
                   min={1}
@@ -403,7 +468,7 @@ export default function NewSalePage() {
                   type="number"
                   min={0.01}
                   step="0.01"
-                  label={t.newSale.quantityM2}
+                  label={`${t.newSale.quantityM2} (${uLabel})`}
                   value={line.quantity_m2}
                   onChange={(e) => updateLine(index, 'quantity_m2', e.target.value)}
                   required
@@ -412,7 +477,7 @@ export default function NewSalePage() {
                   type="number"
                   min={0}
                   step="0.01"
-                  label={t.newSale.unitPrice}
+                  label={`${t.newSale.unitPrice} (${pricePerUnitLabel(lineUnit, loc)})`}
                   value={line.unit_price}
                   onChange={(e) => updateLine(index, 'unit_price', e.target.value)}
                   required
@@ -449,7 +514,7 @@ export default function NewSalePage() {
                         <p className="text-xs text-muted">{t.ai.landedCostLabel}</p>
                         <p className="text-base font-semibold text-navy-900">
                           {pricing?.landed_cost_m2_mad != null
-                            ? `${pricing.landed_cost_m2_mad.toLocaleString('fr-FR')} ${t.ai.perM2}`
+                            ? `${pricing.landed_cost_m2_mad.toLocaleString('fr-FR')} ${pricePerUnitLabel(lineUnit, loc)}`
                             : t.common.loading}
                         </p>
                       </div>
@@ -465,7 +530,7 @@ export default function NewSalePage() {
                         <p className="text-xs text-muted">{t.ai.sellPriceLabel}</p>
                         <p className="text-base font-bold text-teal-700">
                           {calculatedSell != null
-                            ? `${calculatedSell.toLocaleString('fr-FR')} ${t.ai.perM2}`
+                            ? `${calculatedSell.toLocaleString('fr-FR')} ${pricePerUnitLabel(lineUnit, loc)}`
                             : t.common.dash}
                         </p>
                         {calculatedSell != null && (
@@ -492,6 +557,12 @@ export default function NewSalePage() {
                       <>
                         <strong>{stock.available_rolls}</strong> {t.newSale.rollsUnit} ·{' '}
                         <strong>{stock.available_m2.toLocaleString('fr-FR')} m²</strong>
+                        {stock.available_kg != null && (
+                          <>
+                            {' '}
+                            / <strong>{stock.available_kg.toLocaleString('fr-FR')} kg</strong>
+                          </>
+                        )}
                       </>
                     ) : (
                       t.newSale.stockNotFound.replace('{fabric}', fabricLabel(line.fabric_type_id, stock))

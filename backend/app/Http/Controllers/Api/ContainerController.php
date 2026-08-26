@@ -17,10 +17,17 @@ class ContainerController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Container::query()->withCount('items', 'rolls');
+        $query = Container::query()->with(['fournisseur'])->withCount('items', 'rolls');
 
         if ($search = $request->string('search')->toString()) {
-            $query->where('reference', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhereHas('fournisseur', fn ($fq) => $fq->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($type = $request->string('type')->toString()) {
+            $query->where('type', $type);
         }
 
         if ($status = $request->string('status')->toString()) {
@@ -38,7 +45,7 @@ class ContainerController extends Controller
         if ($request->boolean('lite')) {
             $containers = $query
                 ->orderByDesc('arrival_date')
-                ->select('id', 'reference', 'status')
+                ->select('id', 'reference', 'status', 'type')
                 ->limit(min($request->integer('limit', 500), 1000))
                 ->get();
 
@@ -65,6 +72,8 @@ class ContainerController extends Controller
     {
         $data = $request->validate([
             'reference' => ['required', 'string', 'max:100', 'unique:containers,reference'],
+            'type' => ['required', 'in:local,container'],
+            'fournisseur_id' => ['required', 'exists:fournisseurs,id'],
             'arrival_date' => ['required', 'date'],
             'origin' => ['nullable', 'string', 'max:100'],
             'supplier_reference' => ['nullable', 'string', 'max:100'],
@@ -80,9 +89,14 @@ class ContainerController extends Controller
             'items.*.color_code' => ['nullable', 'string', 'max:50'],
             'items.*.color_name' => ['nullable', 'string', 'max:100'],
             'items.*.quantity_m2' => ['required', 'numeric', 'min:0.01'],
+            'items.*.unit' => ['nullable', 'in:m2,kg'],
             'items.*.estimated_rolls' => ['nullable', 'integer', 'min:0'],
             'items.*.notes' => ['nullable', 'string'],
         ]);
+
+        if (($data['type'] ?? '') === 'local' && empty($data['origin'])) {
+            $data['origin'] = 'Maroc';
+        }
 
         try {
             $container = DB::transaction(function () use ($data) {
@@ -108,8 +122,18 @@ class ContainerController extends Controller
 
                     $seen[$key] = true;
 
+                    $unit = \App\Support\QuantityUnit::normalize($itemData['unit'] ?? null);
+                    $fabric = \App\Models\FabricType::query()->find($itemData['fabric_type_id']);
+                    if ($unit === \App\Support\QuantityUnit::KG && ! $fabric?->default_gsm) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Le grammage (g/m²) est requis pour enregistrer « %s » en kg.',
+                            $fabric?->name ?? 'cet article',
+                        ));
+                    }
+
                     $container->items()->create([
                         ...$itemData,
+                        'unit' => $unit,
                         'color_code' => $colorCode,
                         'color_name' => $itemData['color_name'] ?? null,
                     ]);
@@ -123,7 +147,7 @@ class ContainerController extends Controller
 
         Cache::forget('sale_form_options');
 
-        $container->load(['items.fabricType']);
+        $container->load(['items.fabricType', 'fournisseur']);
 
         $totalM2 = round((float) $container->items->sum('quantity_m2'), 2);
         $container->stock_summary = [
@@ -131,14 +155,15 @@ class ContainerController extends Controller
             'total_m2' => $totalM2,
         ];
 
+        $typeLabel = $container->type === 'local' ? 'Achat local' : 'Achat conteneur';
         $this->logger->log(
             $request->user(),
             $request,
             'created',
-            "Conteneur créé — {$container->reference} ({$container->items->count()} lignes stock)",
+            "{$typeLabel} créé — {$container->reference} ({$container->items->count()} lignes stock)",
             'container',
             $container->id,
-            ['reference' => $container->reference, 'lines' => $container->items->count()],
+            ['reference' => $container->reference, 'type' => $container->type, 'lines' => $container->items->count()],
         );
 
         return response()->json($container, 201);
@@ -149,6 +174,7 @@ class ContainerController extends Controller
         $container->load([
             'items.fabricType',
             'rolls.fabricType',
+            'fournisseur',
         ]);
 
         $totalM2 = round((float) $container->items->sum('quantity_m2'), 2);
@@ -164,6 +190,8 @@ class ContainerController extends Controller
     {
         $data = $request->validate([
             'reference' => ['sometimes', 'string', 'max:100', 'unique:containers,reference,'.$container->id],
+            'type' => ['sometimes', 'in:local,container'],
+            'fournisseur_id' => ['sometimes', 'exists:fournisseurs,id'],
             'arrival_date' => ['sometimes', 'date'],
             'origin' => ['nullable', 'string', 'max:100'],
             'supplier_reference' => ['nullable', 'string', 'max:100'],
@@ -177,12 +205,13 @@ class ContainerController extends Controller
         ]);
 
         $container->update($data);
+        $container->load('fournisseur');
 
         $this->logger->log(
             $request->user(),
             $request,
             'updated',
-            "Conteneur modifié — {$container->reference}",
+            "Achat modifié — {$container->reference}",
             'container',
             $container->id,
         );

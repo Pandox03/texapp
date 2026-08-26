@@ -18,6 +18,8 @@ export interface ActivityLog {
   user?: User
 }
 
+export type QuantityUnit = 'm2' | 'kg'
+
 export interface FabricType {
   id: number
   name: string
@@ -26,11 +28,30 @@ export interface FabricType {
   composition?: string | null
   default_width_cm?: number | null
   default_gsm?: number | null
+  /** Stock & sale quantity unit for this article */
+  unit?: QuantityUnit | string | null
   description?: string | null
   market_price_m2_mad?: string | number | null
   target_margin_pct?: string | number | null
   parent?: FabricType | null
   children?: FabricType[]
+}
+
+export interface Fournisseur {
+  id: number
+  name: string
+  contact_person: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  city: string | null
+  country: string | null
+  ice_number: string | null
+  cin: string | null
+  rc: string | null
+  notes: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface ContainerStockSummary {
@@ -45,6 +66,7 @@ export interface ContainerItem {
   color_code: string
   color_name?: string | null
   quantity_m2: string | number
+  unit?: QuantityUnit | string | null
   estimated_rolls?: number | null
   notes?: string | null
   fabric_type?: FabricType
@@ -52,9 +74,14 @@ export interface ContainerItem {
   available_m2?: number
 }
 
+export type AchatType = 'local' | 'container'
+
 export interface Container {
   id: number
   reference: string
+  type: AchatType
+  fournisseur_id?: number | null
+  fournisseur?: Fournisseur | null
   arrival_date: string
   origin: string
   supplier_reference?: string | null
@@ -104,6 +131,8 @@ export interface Client {
   city?: string | null
   category?: string | null
   ice_number?: string | null
+  cin?: string | null
+  rc?: string | null
   credit_limit?: string | number | null
   payment_terms_days?: number
   notes?: string | null
@@ -199,12 +228,15 @@ export interface Payment {
 export interface StockLine {
   fabric_type_id: number
   fabric_type?: FabricType
+  unit?: QuantityUnit | string
   quantity_m2: number
   sold_m2: number
   available_m2: number
+  returned_m2?: number
   total_rolls: number
   available_rolls: number
   sold_rolls: number
+  returned_rolls?: number
 }
 
 export interface StockResponse {
@@ -212,13 +244,44 @@ export interface StockResponse {
     total_m2: number
     sold_m2: number
     available_m2: number
+    returned_m2?: number
+    total_kg?: number
+    sold_kg?: number
+    available_kg?: number
+    returned_kg?: number
     total_rolls: number
     sold_rolls: number
     available_rolls: number
+    returned_rolls?: number
     available_fabric_rolls: number
     lines_count: number
   }
   items: Paginated<StockLine>
+}
+
+export interface StockReturn {
+  id: number
+  fabric_type_id: number
+  client_id?: number | null
+  sale_id?: number | null
+  user_id?: number | null
+  quantity_m2: number | string
+  roll_count: number
+  returned_at: string
+  reason?: string | null
+  notes?: string | null
+  fabric_type?: FabricType
+  client?: Client | null
+  sale?: Sale | null
+  created_at?: string
+}
+
+export interface ReturnableLine {
+  fabric_type_id: number
+  fabric_type_name: string
+  unit?: QuantityUnit | string
+  quantity_m2: number
+  roll_count: number
 }
 
 export interface ClientProfile {
@@ -252,6 +315,7 @@ export interface DashboardChartPoint {
 export interface DashboardStockType {
   fabric_type_id: number
   name: string
+  unit?: QuantityUnit | string
   total_m2: number
   available_m2: number
   sold_m2: number
@@ -292,6 +356,7 @@ export interface DashboardTopClient {
 export interface DashboardLowStock {
   fabric_type_id: number
   fabric_type?: string
+  unit?: QuantityUnit | string
   available_m2: number
   available_rolls: number
   total_m2: number
@@ -384,6 +449,7 @@ export interface AiPricingHint {
 export interface PricingBasis {
   fabric_type_id: number
   fabric_type_name: string
+  unit?: QuantityUnit | string
   landed_cost_m2_mad: number | null
   target_margin_pct: number
   suggested_price_m2_mad: number | null

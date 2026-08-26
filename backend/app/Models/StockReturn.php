@@ -4,18 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ContainerItem extends Model
+class StockReturn extends Model
 {
     protected $fillable = [
-        'container_id',
         'fabric_type_id',
-        'color_code',
-        'color_name',
+        'client_id',
+        'sale_id',
+        'user_id',
         'quantity_m2',
         'unit',
-        'estimated_rolls',
+        'roll_count',
+        'returned_at',
+        'reason',
         'notes',
     ];
 
@@ -23,6 +24,8 @@ class ContainerItem extends Model
     {
         return [
             'quantity_m2' => 'decimal:2',
+            'returned_at' => 'date',
+            'roll_count' => 'integer',
         ];
     }
 
@@ -31,28 +34,23 @@ class ContainerItem extends Model
         return \App\Support\QuantityUnit::normalize($this->unit ?? null);
     }
 
-    public function container(): BelongsTo
-    {
-        return $this->belongsTo(Container::class);
-    }
-
     public function fabricType(): BelongsTo
     {
         return $this->belongsTo(FabricType::class);
     }
 
-    public function rolls(): HasMany
+    public function client(): BelongsTo
     {
-        return $this->hasMany(FabricRoll::class);
+        return $this->belongsTo(Client::class);
     }
 
-    public function soldQuantityM2(): float
+    public function sale(): BelongsTo
     {
-        return (float) $this->rolls()->where('status', 'sold')->sum('quantity_m2');
+        return $this->belongsTo(Sale::class);
     }
 
-    public function availableQuantityM2(): float
+    public function user(): BelongsTo
     {
-        return (float) $this->quantity_m2 - $this->soldQuantityM2();
+        return $this->belongsTo(User::class);
     }
 }

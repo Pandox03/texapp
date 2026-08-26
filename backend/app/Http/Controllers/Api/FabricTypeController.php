@@ -36,10 +36,13 @@ class FabricTypeController extends Controller
             'composition' => ['nullable', 'string', 'max:150'],
             'default_width_cm' => ['nullable', 'integer', 'min:1'],
             'default_gsm' => ['nullable', 'integer', 'min:1'],
+            'unit' => ['nullable', 'in:m2,kg'],
             'description' => ['nullable', 'string'],
             'market_price_m2_mad' => ['nullable', 'numeric', 'min:0'],
             'target_margin_pct' => ['nullable', 'numeric', 'min:0', 'max:500'],
         ]);
+
+        $data['unit'] = \App\Support\QuantityUnit::normalize($data['unit'] ?? null);
 
         $fabricType = FabricType::create($data);
 
@@ -66,10 +69,15 @@ class FabricTypeController extends Controller
             'composition' => ['nullable', 'string', 'max:150'],
             'default_width_cm' => ['nullable', 'integer', 'min:1'],
             'default_gsm' => ['nullable', 'integer', 'min:1'],
+            'unit' => ['sometimes', 'in:m2,kg'],
             'description' => ['nullable', 'string'],
             'market_price_m2_mad' => ['nullable', 'numeric', 'min:0'],
             'target_margin_pct' => ['nullable', 'numeric', 'min:0', 'max:500'],
         ]);
+
+        if (array_key_exists('unit', $data)) {
+            $data['unit'] = \App\Support\QuantityUnit::normalize($data['unit']);
+        }
 
         $fabricType->update($data);
 

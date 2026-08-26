@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Sale;
 use App\Services\ActivityLogger;
@@ -75,6 +76,7 @@ class PaymentController extends Controller
         $data = $request->validate([
             'client_id' => ['required', 'exists:clients,id'],
             'sale_id' => ['nullable', 'exists:sales,id'],
+            'invoice_id' => ['nullable', 'exists:invoices,id'],
             'reference' => ['nullable', 'string', 'max:100', 'unique:payments,reference'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'payment_date' => ['required', 'date'],
@@ -91,17 +93,29 @@ class PaymentController extends Controller
             ],
         ]);
 
+        if (! empty($data['sale_id']) && ! empty($data['invoice_id'])) {
+            return response()->json([
+                'message' => 'Choisissez soit une facture, soit un crédit — pas les deux.',
+            ], 422);
+        }
+
         $data['reference'] = $data['reference'] ?? $this->references->nextPaymentReference();
 
         $client = Client::findOrFail($data['client_id']);
         $sale = null;
+        $invoice = null;
 
-        if (! empty($data['sale_id'])) {
+        if (! empty($data['invoice_id'])) {
+            $invoice = Invoice::query()->with('sale')->findOrFail($data['invoice_id']);
+            if ($invoice->client_id !== $client->id) {
+                return response()->json(['message' => 'Cette facture n\'appartient pas à ce client.'], 422);
+            }
+        } elseif (! empty($data['sale_id'])) {
             $sale = Sale::findOrFail($data['sale_id']);
         }
 
         try {
-            $this->billing->validateClientPaymentAmount($client, (float) $data['amount'], $sale);
+            $this->billing->validateClientPaymentAmount($client, (float) $data['amount'], $sale, $invoice);
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -111,10 +125,10 @@ class PaymentController extends Controller
             $proofPath = $request->file('proof_document')->store('payment-proofs', 'public');
         }
 
-        $payment = DB::transaction(function () use ($data, $request, $client, $proofPath, $sale) {
+        $payment = DB::transaction(function () use ($data, $request, $client, $proofPath, $sale, $invoice) {
             $payment = Payment::create([
                 'client_id' => $client->id,
-                'invoice_id' => null,
+                'invoice_id' => $invoice?->id,
                 'sale_id' => $sale?->id,
                 'reference' => $data['reference'],
                 'amount' => $data['amount'],
@@ -132,18 +146,25 @@ class PaymentController extends Controller
             return $payment;
         });
 
-        $payment->load(['client', 'sale']);
+        $payment->load(['client', 'sale', 'invoice']);
 
         $this->logger->log(
             $request->user(),
             $request,
             'created',
-            $sale
-                ? "Paiement crédit enregistré — {$payment->reference} ({$payment->amount} MAD) · {$client->name} · {$sale->reference}"
-                : "Paiement enregistré — {$payment->reference} ({$payment->amount} MAD) · {$client->name}",
+            $invoice
+                ? "Paiement facture enregistré — {$payment->reference} ({$payment->amount} MAD) · {$client->name} · {$invoice->reference}"
+                : ($sale
+                    ? "Paiement crédit enregistré — {$payment->reference} ({$payment->amount} MAD) · {$client->name} · {$sale->reference}"
+                    : "Paiement client enregistré — {$payment->reference} ({$payment->amount} MAD) · {$client->name}"),
             'payment',
             $payment->id,
-            ['client' => $client->name, 'amount' => $payment->amount, 'sale_id' => $sale?->id],
+            [
+                'client' => $client->name,
+                'amount' => $payment->amount,
+                'sale_id' => $sale?->id,
+                'invoice_id' => $invoice?->id,
+            ],
         );
 
         $this->adminNotifications->notifyPaymentRegistered($payment);

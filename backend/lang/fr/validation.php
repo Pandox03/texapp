@@ -28,6 +28,7 @@ return [
     'numeric' => 'Le champ :attribute doit être un nombre.',
     'required' => 'Le champ :attribute est obligatoire.',
     'required_if' => 'Le champ :attribute est obligatoire.',
+    'required_without' => 'Le champ :attribute est obligatoire si :values n\'est pas renseigné.',
     'string' => 'Le champ :attribute doit être une chaîne de caractères.',
     'unique' => 'Cette valeur de :attribute est déjà utilisée.',
 
@@ -51,5 +52,9 @@ return [
         'proof_document' => 'preuve de paiement',
         'invoice_date' => 'date de facture',
         'due_date' => 'date d\'échéance',
+        'cin' => 'CIN',
+        'rc' => 'RC',
+        'ice_number' => 'ICE',
+        'fournisseur_id' => 'fournisseur',
     ],
 ];

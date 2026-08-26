@@ -1,6 +1,6 @@
 import { FormEvent, Fragment, useCallback, useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Banknote, Bot, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Banknote, Bot, ChevronDown, ChevronRight, FileDown, FileSpreadsheet, Pencil, Plus, Trash2 } from 'lucide-react'
 import api from '../lib/api'
 import { extractApiError } from '../lib/errors'
 import { useAuth } from '../context/AuthContext'
@@ -8,13 +8,17 @@ import { useI18n } from '../context/LocaleContext'
 import type { AiClientSummary, Client, ClientProfile, Invoice, InvoiceStatus, Payment, Sale } from '../types'
 import { toInputDate } from '../lib/format'
 import Card from '../components/ui/Card'
+import InvoicePicker, { invoiceRemaining, unpaidInvoices } from '../components/ui/InvoicePicker'
 import { InvoiceStatusSelect } from '../components/ui/InvoiceStatusSelect'
 import { InvoiceBadge, PaymentBadge } from '../components/ui/StatusBadge'
 
 type Tab = 'orders' | 'credits' | 'payments' | 'invoices'
+type PaymentTargetMode = 'client' | 'invoice'
+type StatementFormat = 'pdf' | 'xls'
 
 export default function ClientDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const initialTab = (searchParams.get('tab') as Tab | null) ?? 'orders'
   const { isAdmin, isSecretaire, isComptable } = useAuth()
@@ -28,6 +32,8 @@ export default function ClientDetailPage() {
   const [showEditForm, setShowEditForm] = useState(false)
   const [showPaymentForm, setShowPaymentForm] = useState(false)
   const [paymentTargetCreditId, setPaymentTargetCreditId] = useState<number | null>(null)
+  const [paymentTargetMode, setPaymentTargetMode] = useState<PaymentTargetMode>('client')
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState('')
   const [updatingInvoiceId, setUpdatingInvoiceId] = useState<number | null>(null)
   const [paymentForm, setPaymentForm] = useState({
     reference: `PAY-${Date.now()}`,
@@ -49,6 +55,8 @@ export default function ClientDetailPage() {
     city: '',
     category: '',
     ice_number: '',
+    cin: '',
+    rc: '',
     credit_limit: '',
     payment_terms_days: '30',
     notes: '',
@@ -56,10 +64,16 @@ export default function ClientDetailPage() {
   const [editError, setEditError] = useState('')
   const [submittingEdit, setSubmittingEdit] = useState(false)
   const [editingCreditId, setEditingCreditId] = useState<number | null>(null)
+  const [showNewCreditForm, setShowNewCreditForm] = useState(false)
   const [expandedCreditId, setExpandedCreditId] = useState<number | null>(null)
   const [creditForm, setCreditForm] = useState({
     reference: '',
     sale_date: '',
+    total_amount: '',
+    notes: '',
+  })
+  const [newCreditForm, setNewCreditForm] = useState({
+    sale_date: new Date().toISOString().slice(0, 10),
     total_amount: '',
     notes: '',
   })
@@ -69,6 +83,8 @@ export default function ClientDetailPage() {
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false)
   const [aiSummaryError, setAiSummaryError] = useState('')
   const [showAiSummary, setShowAiSummary] = useState(false)
+  const [statementDownloading, setStatementDownloading] = useState<StatementFormat | null>(null)
+  const [statementError, setStatementError] = useState('')
 
   const loadAiSummary = useCallback(async (refresh = false) => {
     if (!id) return
@@ -109,6 +125,8 @@ export default function ClientDetailPage() {
       city: client.city ?? '',
       category: client.category ?? '',
       ice_number: client.ice_number ?? '',
+      cin: client.cin ?? '',
+      rc: client.rc ?? '',
       credit_limit: client.credit_limit != null ? String(client.credit_limit) : '',
       payment_terms_days: String(client.payment_terms_days ?? 30),
       notes: client.notes ?? '',
@@ -120,6 +138,11 @@ export default function ClientDetailPage() {
   async function handleClientUpdate(e: FormEvent) {
     e.preventDefault()
     if (!profile) return
+
+    if (!editForm.cin.trim() && !editForm.rc.trim()) {
+      setEditError(t.clients.cinOrRcRequired)
+      return
+    }
 
     setEditError('')
     setSubmittingEdit(true)
@@ -134,6 +157,8 @@ export default function ClientDetailPage() {
         city: editForm.city || null,
         category: editForm.category || null,
         ice_number: editForm.ice_number || null,
+        cin: editForm.cin || null,
+        rc: editForm.rc || null,
         credit_limit: editForm.credit_limit ? Number(editForm.credit_limit) : null,
         payment_terms_days: Number(editForm.payment_terms_days),
         notes: editForm.notes || null,
@@ -157,6 +182,10 @@ export default function ClientDetailPage() {
       setPaymentError(t.clients.proofRequired)
       return
     }
+    if (!paymentTargetCreditId && paymentTargetMode === 'invoice' && !paymentInvoiceId) {
+      setPaymentError(t.clients.chooseInvoice)
+      return
+    }
 
     setPaymentError('')
     setSubmittingPayment(true)
@@ -169,6 +198,9 @@ export default function ClientDetailPage() {
       formData.append('payment_date', paymentForm.payment_date)
       formData.append('method', paymentForm.method)
       if (paymentTargetCreditId) formData.append('sale_id', String(paymentTargetCreditId))
+      else if (paymentTargetMode === 'invoice' && paymentInvoiceId) {
+        formData.append('invoice_id', paymentInvoiceId)
+      }
       if (paymentForm.bank_reference) formData.append('bank_reference', paymentForm.bank_reference)
       if (paymentForm.notes) formData.append('notes', paymentForm.notes)
       if (proofFile) formData.append('proof_document', proofFile)
@@ -178,6 +210,8 @@ export default function ClientDetailPage() {
       const paidCreditId = paymentTargetCreditId
       setShowPaymentForm(false)
       setPaymentTargetCreditId(null)
+      setPaymentTargetMode('client')
+      setPaymentInvoiceId('')
       setProofFile(null)
       setPaymentForm({
         reference: `PAY-${Date.now()}`,
@@ -198,6 +232,8 @@ export default function ClientDetailPage() {
 
   function openSalesPaymentForm() {
     setPaymentTargetCreditId(null)
+    setPaymentTargetMode('client')
+    setPaymentInvoiceId('')
     setPaymentForm({
       reference: `PAY-${Date.now()}`,
       amount: '',
@@ -211,9 +247,31 @@ export default function ClientDetailPage() {
     setShowPaymentForm(true)
   }
 
+  function openInvoicePaymentForm(invoice?: Invoice) {
+    setPaymentTargetCreditId(null)
+    setPaymentTargetMode('invoice')
+    const invId = invoice ? String(invoice.id) : ''
+    const due = invoice ? invoiceRemaining(invoice) : 0
+    setPaymentInvoiceId(invId)
+    setPaymentForm({
+      reference: `PAY-${Date.now()}`,
+      amount: due > 0.01 ? String(Math.round(due * 100) / 100) : '',
+      payment_date: new Date().toISOString().slice(0, 10),
+      method: 'virement',
+      bank_reference: '',
+      notes: '',
+    })
+    setProofFile(null)
+    setPaymentError('')
+    setShowPaymentForm(true)
+    setTab('payments')
+  }
+
   function openCreditPaymentForm(credit: Sale) {
     const due = credit.balance_due ?? Number(credit.total_amount) - Number(credit.paid_amount ?? 0)
     setPaymentTargetCreditId(credit.id)
+    setPaymentTargetMode('client')
+    setPaymentInvoiceId('')
     setPaymentForm({
       reference: `PAY-${Date.now()}`,
       amount: due > 0 ? String(due) : '',
@@ -236,6 +294,65 @@ export default function ClientDetailPage() {
     window.open(url, '_blank')
   }
 
+  async function downloadStatement(format: StatementFormat) {
+    if (!id) return
+    setStatementError('')
+    setStatementDownloading(format)
+    try {
+      const res = await api.get(`/clients/${id}/statement.${format}`, {
+        responseType: 'blob',
+        headers: {
+          Accept: format === 'pdf'
+            ? 'application/pdf'
+            : 'application/vnd.ms-excel',
+        },
+      })
+
+      const contentType = String(res.headers['content-type'] ?? '')
+      if (contentType.includes('application/json')) {
+        const text = await (res.data as Blob).text()
+        const parsed = JSON.parse(text) as { message?: string }
+        throw new Error(parsed.message ?? t.clients.statementError)
+      }
+
+      const mime = format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.ms-excel'
+      const url = URL.createObjectURL(new Blob([res.data], { type: mime }))
+      const link = document.createElement('a')
+      link.href = url
+      const safeName = (profile?.client.name ?? 'client').replace(/[^\w\-]+/g, '-')
+      link.download = `etat-client-${safeName}-${new Date().toISOString().slice(0, 10)}.${format === 'pdf' ? 'pdf' : 'xls'}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: unknown) {
+      let msg = t.clients.statementError
+      if (err instanceof Error && err.message) {
+        msg = err.message
+      }
+      try {
+        const ax = err as { response?: { data?: Blob | { message?: string } } }
+        const data = ax.response?.data
+        if (data instanceof Blob) {
+          const text = await data.text()
+          const parsed = JSON.parse(text) as { message?: string }
+          if (parsed.message) msg = parsed.message
+        } else if (data && typeof data === 'object' && 'message' in data && data.message) {
+          msg = String(data.message)
+        } else {
+          msg = extractApiError(err, t.clients.statementError)
+        }
+      } catch {
+        msg = extractApiError(err, t.clients.statementError)
+      }
+      setStatementError(msg)
+    } finally {
+      setStatementDownloading(null)
+    }
+  }
+
   async function updateInvoiceStatus(invoice: Invoice, status: InvoiceStatus) {
     if (status === invoice.status) return
     setUpdatingInvoiceId(invoice.id)
@@ -255,6 +372,7 @@ export default function ClientDetailPage() {
   }
 
   function openCreditEdit(credit: Sale) {
+    setShowNewCreditForm(false)
     setCreditForm({
       reference: credit.reference,
       sale_date: toInputDate(credit.sale_date),
@@ -263,6 +381,42 @@ export default function ClientDetailPage() {
     })
     setCreditError('')
     setEditingCreditId(credit.id)
+  }
+
+  function openNewCreditForm() {
+    setEditingCreditId(null)
+    setCreditError('')
+    setNewCreditForm({
+      sale_date: new Date().toISOString().slice(0, 10),
+      total_amount: '',
+      notes: '',
+    })
+    setShowNewCreditForm(true)
+    setTab('credits')
+  }
+
+  async function handleCreditCreate(e: FormEvent) {
+    e.preventDefault()
+    if (!id) return
+
+    setCreditError('')
+    setSubmittingCredit(true)
+
+    try {
+      const { data } = await api.post<{ id: number }>('/sales', {
+        sale_type: 'legacy_credit',
+        client_id: Number(id),
+        sale_date: newCreditForm.sale_date,
+        total_amount: Number(newCreditForm.total_amount),
+        notes: newCreditForm.notes || null,
+      })
+      setShowNewCreditForm(false)
+      navigate(`/invoices/generer?sale_id=${data.id}`)
+    } catch (err: unknown) {
+      setCreditError(extractApiError(err, t.credit.error))
+    } finally {
+      setSubmittingCredit(false)
+    }
   }
 
   async function handleCreditUpdate(e: FormEvent) {
@@ -323,10 +477,16 @@ export default function ClientDetailPage() {
   const payingCredit = paymentTargetCreditId
     ? credits.find((c) => c.id === paymentTargetCreditId) ?? null
     : null
+  const selectedInvoice = paymentInvoiceId
+    ? invoices.find((inv) => String(inv.id) === paymentInvoiceId)
+    : undefined
+  const payableInvoices = unpaidInvoices(invoices)
   const paymentMax = payingCredit
     ? (payingCredit.balance_due ?? Number(payingCredit.total_amount) - Number(payingCredit.paid_amount ?? 0))
-    : balance.sales_balance_due
-  const showPaymentPanel = canRecordPayment && showPaymentForm && (payingCredit ? paymentMax > 0.01 : canPaySales)
+    : paymentTargetMode === 'invoice' && selectedInvoice
+      ? invoiceRemaining(selectedInvoice)
+      : balance.sales_balance_due
+  const showPaymentPanel = canRecordPayment && showPaymentForm && (payingCredit ? paymentMax > 0.01 : canPaySales || payableInvoices.length > 0)
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'orders', label: t.clients.orders, count: stock_sales.length },
@@ -349,23 +509,53 @@ export default function ClientDetailPage() {
         <Card>
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <h1 className="text-2xl font-bold text-navy-900">{client.name}</h1>
-            {canEditClient && !showEditForm && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="hidden text-xs font-medium uppercase tracking-wide text-muted sm:inline">
+                {t.clients.statementTitle}
+              </span>
               <button
                 type="button"
-                onClick={() => openEditForm(client)}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-navy-800 hover:bg-surface"
+                onClick={() => downloadStatement('pdf')}
+                disabled={statementDownloading !== null}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-navy-800 hover:bg-surface disabled:opacity-50"
+                title={t.clients.downloadStatementPdf}
               >
-                <Pencil size={16} />
-                {t.clients.edit}
+                <FileDown size={16} />
+                {statementDownloading === 'pdf' ? '…' : t.clients.downloadStatementPdf}
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => downloadStatement('xls')}
+                disabled={statementDownloading !== null}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-navy-800 hover:bg-surface disabled:opacity-50"
+                title={t.clients.downloadStatementExcel}
+              >
+                <FileSpreadsheet size={16} />
+                {statementDownloading === 'xls' ? '…' : t.clients.downloadStatementExcel}
+              </button>
+              {canEditClient && !showEditForm && (
+                <button
+                  type="button"
+                  onClick={() => openEditForm(client)}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-navy-800 hover:bg-surface"
+                >
+                  <Pencil size={16} />
+                  {t.clients.edit}
+                </button>
+              )}
+            </div>
           </div>
+          {statementError && (
+            <p className="mb-3 text-sm text-red-600">{statementError}</p>
+          )}
           {!showEditForm ? (
           <div className="grid gap-2 text-sm sm:grid-cols-2">
             {client.contact_person && <p><span className="text-muted">{t.clients.contact} :</span> {client.contact_person}</p>}
             {client.phone && <p><span className="text-muted">{t.common.phone} :</span> {client.phone}</p>}
             {client.email && <p><span className="text-muted">{t.auth.email} :</span> {client.email}</p>}
             {client.ice_number && <p><span className="text-muted">{t.clients.ice} :</span> {client.ice_number}</p>}
+            {client.cin && <p><span className="text-muted">{t.clients.cin} :</span> {client.cin}</p>}
+            {client.rc && <p><span className="text-muted">{t.clients.rc} :</span> {client.rc}</p>}
             {client.city && <p><span className="text-muted">{t.common.city} :</span> {client.city}</p>}
             {client.category && <p><span className="text-muted">{t.common.category} :</span> {client.category}</p>}
             {client.address && <p className="sm:col-span-2"><span className="text-muted">{t.common.address} :</span> {client.address}</p>}
@@ -390,6 +580,14 @@ export default function ClientDetailPage() {
             <div>
               <label className="mb-1 block text-sm font-medium">{t.auth.email}</label>
               <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="w-full rounded-xl border border-border px-4 py-3" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">{t.clients.cin}{!editForm.rc.trim() ? ' *' : ''}</label>
+              <input value={editForm.cin} onChange={(e) => setEditForm({ ...editForm, cin: e.target.value })} className="w-full rounded-xl border border-border px-4 py-3" required={!editForm.rc.trim()} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">{t.clients.rc}{!editForm.cin.trim() ? ' *' : ''}</label>
+              <input value={editForm.rc} onChange={(e) => setEditForm({ ...editForm, rc: e.target.value })} className="w-full rounded-xl border border-border px-4 py-3" required={!editForm.cin.trim()} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t.clients.ice}</label>
@@ -523,15 +721,22 @@ export default function ClientDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {canEditClient && tab === 'credits' && (
-            <Link
-              to={`/credits/new?client_id=${client.id}`}
+            <button
+              type="button"
+              onClick={() => {
+                if (showNewCreditForm) {
+                  setShowNewCreditForm(false)
+                } else {
+                  openNewCreditForm()
+                }
+              }}
               className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-surface"
             >
               <Plus size={16} />
-              {t.nav.credits}
-            </Link>
+              {t.credit.submit}
+            </button>
           )}
-          {canRecordPayment && canPaySales && (
+          {canRecordPayment && (canPaySales || payableInvoices.length > 0) && (
             <button
               type="button"
               onClick={() => {
@@ -564,13 +769,65 @@ export default function ClientDetailPage() {
                 </>
               ) : (
                 <>
-                  <p className="font-medium text-navy-900">{t.clients.paymentFifoHint}</p>
-                  <p className="mt-1 text-muted">
-                    {t.clients.salesBalanceDue}: <strong className="text-red-600">{balance.sales_balance_due.toLocaleString('fr-FR')} MAD</strong>
-                  </p>
+                  <p className="mb-3 font-medium text-navy-900">{t.clients.paymentTargetTitle}</p>
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentTargetMode('client')
+                        setPaymentInvoiceId('')
+                        setPaymentForm((prev) => ({ ...prev, amount: '' }))
+                      }}
+                      className={`cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold ${
+                        paymentTargetMode === 'client' ? 'bg-teal-600 text-white' : 'border border-border bg-white'
+                      }`}
+                    >
+                      {t.clients.paymentTargetClient}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentTargetMode('invoice')
+                        setPaymentForm((prev) => ({ ...prev, amount: '' }))
+                      }}
+                      className={`cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold ${
+                        paymentTargetMode === 'invoice' ? 'bg-teal-600 text-white' : 'border border-border bg-white'
+                      }`}
+                    >
+                      {t.clients.paymentTargetInvoice}
+                    </button>
+                  </div>
+                  {paymentTargetMode === 'client' ? (
+                    <>
+                      <p className="text-muted">{t.clients.paymentFifoHint}</p>
+                      <p className="mt-1 text-muted">
+                        {t.clients.salesBalanceDue}:{' '}
+                        <strong className="text-red-600">{balance.sales_balance_due.toLocaleString('fr-FR')} MAD</strong>
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-muted">{t.clients.paymentInvoiceHint}</p>
+                  )}
                 </>
               )}
             </div>
+
+            {!payingCredit && paymentTargetMode === 'invoice' && (
+              <InvoicePicker
+                invoices={invoices}
+                value={paymentInvoiceId}
+                onChange={(invoiceId, invoice) => {
+                  setPaymentInvoiceId(invoiceId)
+                  if (invoice) {
+                    const due = invoiceRemaining(invoice)
+                    setPaymentForm((prev) => ({
+                      ...prev,
+                      amount: due > 0.01 ? String(Math.round(due * 100) / 100) : '',
+                    }))
+                  }
+                }}
+              />
+            )}
 
             <div className="grid items-start gap-4 md:grid-cols-3">
               <div>
@@ -672,6 +929,8 @@ export default function ClientDetailPage() {
                 onClick={() => {
                   setShowPaymentForm(false)
                   setPaymentTargetCreditId(null)
+                  setPaymentTargetMode('client')
+                  setPaymentInvoiceId('')
                 }}
                 className="cursor-pointer rounded-xl border border-border px-4 py-3 font-medium hover:bg-surface"
               >
@@ -716,6 +975,53 @@ export default function ClientDetailPage() {
 
       {tab === 'credits' && (
         <Card>
+          {showNewCreditForm && (
+            <form onSubmit={handleCreditCreate} className="mb-6 grid gap-4 border-b border-border pb-6 md:grid-cols-2">
+              <div className="md:col-span-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {t.credit.noStockHint}
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t.common.date}</label>
+                <input
+                  type="date"
+                  value={newCreditForm.sale_date}
+                  onChange={(e) => setNewCreditForm({ ...newCreditForm, sale_date: e.target.value })}
+                  className="w-full rounded-xl border border-border px-4 py-3"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t.credit.totalAmount}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={newCreditForm.total_amount}
+                  onChange={(e) => setNewCreditForm({ ...newCreditForm, total_amount: e.target.value })}
+                  className="w-full rounded-xl border border-border px-4 py-3"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium">{t.common.notes}</label>
+                <input
+                  value={newCreditForm.notes}
+                  onChange={(e) => setNewCreditForm({ ...newCreditForm, notes: e.target.value })}
+                  className="w-full rounded-xl border border-border px-4 py-3"
+                  placeholder={t.credit.notesPlaceholder}
+                />
+              </div>
+              {creditError && !editingCreditId && <p className="md:col-span-2 text-sm text-red-600">{creditError}</p>}
+              <div className="flex gap-2 md:col-span-2">
+                <button type="submit" disabled={submittingCredit} className="cursor-pointer rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  {submittingCredit ? t.credit.saving : t.credit.submit}
+                </button>
+                <button type="button" onClick={() => setShowNewCreditForm(false)} className="cursor-pointer rounded-xl border border-border px-4 py-2 text-sm font-medium hover:bg-surface">
+                  {t.common.cancel}
+                </button>
+              </div>
+            </form>
+          )}
           {editingCreditId && (
             <form onSubmit={handleCreditUpdate} className="mb-6 grid gap-4 border-b border-border pb-6 md:grid-cols-2">
               <div>
@@ -879,18 +1185,26 @@ export default function ClientDetailPage() {
                   <th className="px-3 py-3">{t.common.reference}</th>
                   <th className="px-3 py-3">{t.common.date}</th>
                   <th className="px-3 py-3">{t.common.amount}</th>
+                  <th className="px-3 py-3">{t.clients.paymentTarget}</th>
                   <th className="px-3 py-3">{t.common.method}</th>
                   <th className="px-3 py-3">{t.clients.bankRef}</th>
                   <th className="px-3 py-3">{t.clients.proofDocument}</th>
                 </tr>
               </thead>
               <tbody>
-                {salesPayments.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted">{t.clients.noPayments}</td></tr>}
+                {salesPayments.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-muted">{t.clients.noPayments}</td></tr>}
                 {salesPayments.map((p: Payment) => (
                   <tr key={p.id} className="border-b border-border/70">
                     <td className="px-3 py-3 font-medium">{p.reference}</td>
                     <td className="px-3 py-3">{formatDateShort(p.payment_date)}</td>
                     <td className="px-3 py-3 font-semibold text-teal-600">{Number(p.amount).toLocaleString('fr-FR')} MAD</td>
+                    <td className="px-3 py-3">
+                      {p.invoice?.reference
+                        ? p.invoice.reference
+                        : p.auto_allocated
+                          ? t.clients.paymentTargetClient
+                          : p.sale?.reference ?? t.common.dash}
+                    </td>
                     <td className="px-3 py-3">{t.paymentMethod[p.method]}</td>
                     <td className="px-3 py-3">{p.bank_reference ?? t.common.dash}</td>
                     <td className="px-3 py-3">
@@ -921,16 +1235,25 @@ export default function ClientDetailPage() {
                   <th className="px-3 py-3">{t.sales.balance}</th>
                   <th className="px-3 py-3">{t.invoices.dueDate}</th>
                   <th className="px-3 py-3">{t.containers.status}</th>
+                  {canRecordPayment && <th className="px-3 py-3 text-right">{t.common.actions}</th>}
                 </tr>
               </thead>
               <tbody>
-                {invoices.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted">{t.clients.noInvoices}</td></tr>}
-                {invoices.map((inv) => (
+                {invoices.length === 0 && (
+                  <tr>
+                    <td colSpan={canRecordPayment ? 7 : 6} className="px-3 py-8 text-center text-muted">
+                      {t.clients.noInvoices}
+                    </td>
+                  </tr>
+                )}
+                {invoices.map((inv) => {
+                  const remaining = invoiceRemaining(inv)
+                  return (
                   <tr key={inv.id} className="border-b border-border/70">
                     <td className="px-3 py-3 font-medium">{inv.reference}</td>
                     <td className="px-3 py-3">{inv.invoice_date}</td>
                     <td className="px-3 py-3">{Number(inv.total).toLocaleString('fr-FR')} MAD</td>
-                    <td className="px-3 py-3">{(inv.remaining_to_pay ?? Number(inv.total)).toLocaleString('fr-FR')} MAD</td>
+                    <td className="px-3 py-3">{remaining.toLocaleString('fr-FR')} MAD</td>
                     <td className="px-3 py-3">{inv.due_date ?? t.common.dash}</td>
                     <td className="px-3 py-3">
                       {isAdmin ? (
@@ -943,8 +1266,22 @@ export default function ClientDetailPage() {
                         <InvoiceBadge status={inv.status} />
                       )}
                     </td>
+                    {canRecordPayment && (
+                      <td className="px-3 py-3 text-right">
+                        {remaining > 0.01 && (
+                          <button
+                            type="button"
+                            onClick={() => openInvoicePaymentForm(inv)}
+                            className="cursor-pointer text-sm font-medium text-teal-700 hover:underline"
+                          >
+                            {t.clients.payInvoice}
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

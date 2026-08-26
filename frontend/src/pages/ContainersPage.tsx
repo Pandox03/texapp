@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Trash2 } from 'lucide-react'
 import api from '../lib/api'
 import { useI18n } from '../context/LocaleContext'
-import type { Container, FabricType, Paginated } from '../types'
+import { unitLabel } from '../lib/units'
+import type { AchatType, Container, FabricType, Fournisseur, Paginated } from '../types'
 import PageHeader from '../components/ui/PageHeader'
 import Card from '../components/ui/Card'
 import FilterBar from '../components/ui/FilterBar'
@@ -18,26 +19,36 @@ const statusColors: Record<Container['status'], string> = {
 interface StockLine {
   fabric_type_id: string
   quantity_m2: string
+  unit: 'm2' | 'kg'
   estimated_rolls: string
 }
 
 const emptyStockLine = (): StockLine => ({
   fabric_type_id: '',
   quantity_m2: '',
+  unit: 'm2',
   estimated_rolls: '',
 })
 
+function typeLabel(type: AchatType | undefined, t: ReturnType<typeof useI18n>['t']) {
+  return type === 'local' ? t.containers.typeLocal : t.containers.typeContainer
+}
+
 export default function ContainersPage() {
-  const { t, containerStatusLabel } = useI18n()
+  const { t, containerStatusLabel, locale } = useI18n()
+  const loc = locale === 'ar' ? 'ar' : 'fr'
   const navigate = useNavigate()
   const [containers, setContainers] = useState<Container[]>([])
   const [fabricTypes, setFabricTypes] = useState<FabricType[]>([])
+  const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([])
   const [showForm, setShowForm] = useState(false)
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     reference: '',
+    type: 'container' as AchatType,
+    fournisseur_id: '',
     arrival_date: new Date().toISOString().slice(0, 10),
     origin: 'Chine',
     notes: '',
@@ -55,13 +66,25 @@ export default function ContainersPage() {
   }, [filters])
 
   useEffect(() => {
-    if (showForm && fabricTypes.length === 0) {
+    if (!showForm) return
+    if (fabricTypes.length === 0) {
       api.get<FabricType[]>('/fabric-types').then((res) => setFabricTypes(res.data))
     }
-  }, [showForm, fabricTypes.length])
+    if (fournisseurs.length === 0) {
+      api.get<Fournisseur[]>('/fournisseurs').then((res) => setFournisseurs(res.data))
+    }
+  }, [showForm, fabricTypes.length, fournisseurs.length])
 
   function updateStockLine(index: number, field: keyof StockLine, value: string) {
     setStockLines((prev) => prev.map((line, i) => (i === index ? { ...line, [field]: value } : line)))
+  }
+
+  function setType(type: AchatType) {
+    setForm((prev) => ({
+      ...prev,
+      type,
+      origin: type === 'local' ? 'Maroc' : prev.origin === 'Maroc' ? 'Chine' : prev.origin,
+    }))
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -72,21 +95,30 @@ export default function ContainersPage() {
     try {
       const { data } = await api.post<Container>('/containers', {
         ...form,
+        fournisseur_id: Number(form.fournisseur_id),
         status: 'arrived',
         items: stockLines.map((line) => ({
           fabric_type_id: Number(line.fabric_type_id),
           quantity_m2: Number(line.quantity_m2),
+          unit: line.unit,
           estimated_rolls: line.estimated_rolls ? Number(line.estimated_rolls) : null,
         })),
       })
 
       setShowForm(false)
-      setForm({ reference: '', arrival_date: new Date().toISOString().slice(0, 10), origin: 'Chine', notes: '' })
+      setForm({
+        reference: '',
+        type: 'container',
+        fournisseur_id: '',
+        arrival_date: new Date().toISOString().slice(0, 10),
+        origin: 'Chine',
+        notes: '',
+      })
       setStockLines([emptyStockLine()])
       navigate(`/containers/${data.id}`)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      setError(msg ?? 'Impossible d\'enregistrer le conteneur.')
+      setError(msg ?? t.containers.saveError)
     } finally {
       setSubmitting(false)
     }
@@ -113,6 +145,16 @@ export default function ContainersPage() {
         fields={[
           { key: 'search', label: t.filters.search, type: 'text', placeholder: t.containers.refPlaceholder },
           {
+            key: 'type',
+            label: t.containers.typeFilter,
+            type: 'select',
+            placeholder: t.common.all,
+            options: [
+              { value: 'local', label: t.containers.typeLocal },
+              { value: 'container', label: t.containers.typeContainer },
+            ],
+          },
+          {
             key: 'status',
             label: t.containers.status,
             type: 'select',
@@ -135,6 +177,20 @@ export default function ContainersPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <h2 className="mb-4 text-lg font-semibold">{t.containers.new}</h2>
+              <div className="mb-4 flex flex-wrap gap-2">
+                {(['local', 'container'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setType(type)}
+                    className={`cursor-pointer rounded-xl px-4 py-2.5 text-sm font-semibold ${
+                      form.type === type ? 'bg-navy-900 text-white' : 'bg-surface text-navy-800'
+                    }`}
+                  >
+                    {typeLabel(type, t)}
+                  </button>
+                ))}
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <input
                   placeholder={t.containers.refPlaceholder}
@@ -143,6 +199,19 @@ export default function ContainersPage() {
                   className="rounded-xl border border-border px-4 py-3"
                   required
                 />
+                <select
+                  value={form.fournisseur_id}
+                  onChange={(e) => setForm({ ...form, fournisseur_id: e.target.value })}
+                  className="rounded-xl border border-border px-4 py-3"
+                  required
+                >
+                  <option value="">{t.containers.selectFournisseur}</option>
+                  {fournisseurs.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="date"
                   value={form.arrival_date}
@@ -150,19 +219,28 @@ export default function ContainersPage() {
                   className="rounded-xl border border-border px-4 py-3"
                   required
                 />
-                <input
-                  placeholder={t.common.origin}
-                  value={form.origin}
-                  onChange={(e) => setForm({ ...form, origin: e.target.value })}
-                  className="rounded-xl border border-border px-4 py-3"
-                />
+                {form.type === 'container' && (
+                  <input
+                    placeholder={t.common.origin}
+                    value={form.origin}
+                    onChange={(e) => setForm({ ...form, origin: e.target.value })}
+                    className="rounded-xl border border-border px-4 py-3"
+                  />
+                )}
                 <input
                   placeholder={t.common.notes}
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  className="rounded-xl border border-border px-4 py-3"
+                  className={`rounded-xl border border-border px-4 py-3 ${form.type === 'local' ? 'md:col-span-2' : ''}`}
                 />
               </div>
+              {fournisseurs.length === 0 && (
+                <p className="mt-3 text-sm text-amber-700">
+                  <Link to="/settings?tab=fournisseurs" className="underline">
+                    {t.containers.noFournisseurs}
+                  </Link>
+                </p>
+              )}
             </div>
 
             <div>
@@ -205,11 +283,33 @@ export default function ContainersPage() {
                     >
                       <option value="">{t.containers.selectType}</option>
                       {fabricTypes.map((type) => (
-                        <option key={type.id} value={type.id}>{type.name}</option>
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                        </option>
                       ))}
                     </select>
+                    <div className="flex gap-2 md:col-span-2">
+                      <button
+                        type="button"
+                        onClick={() => updateStockLine(index, 'unit', 'm2')}
+                        className={`cursor-pointer rounded-xl px-3 py-2 text-sm font-semibold ${
+                          line.unit === 'm2' ? 'bg-teal-500 text-white' : 'border border-border'
+                        }`}
+                      >
+                        m²
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateStockLine(index, 'unit', 'kg')}
+                        className={`cursor-pointer rounded-xl px-3 py-2 text-sm font-semibold ${
+                          line.unit === 'kg' ? 'bg-teal-500 text-white' : 'border border-border'
+                        }`}
+                      >
+                        kg
+                      </button>
+                    </div>
                     <input
-                      placeholder={t.containers.quantityM2}
+                      placeholder={`${t.containers.quantityM2} (${unitLabel(line.unit, loc)})`}
                       type="number"
                       step="0.01"
                       min="0.01"
@@ -235,7 +335,7 @@ export default function ContainersPage() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || fournisseurs.length === 0}
               className="cursor-pointer rounded-xl bg-navy-900 px-4 py-3 font-semibold text-white disabled:opacity-60"
             >
               {submitting ? t.common.loading : t.containers.save}
@@ -250,10 +350,11 @@ export default function ContainersPage() {
             <thead className="border-b border-border text-muted">
               <tr>
                 <th className="px-3 py-3 font-medium">{t.common.reference}</th>
+                <th className="px-3 py-3 font-medium">{t.containers.type}</th>
+                <th className="px-3 py-3 font-medium">{t.containers.fournisseur}</th>
                 <th className="px-3 py-3 font-medium">{t.containers.arrival}</th>
-                <th className="px-3 py-3 font-medium">{t.common.origin}</th>
+                <th className="hidden px-3 py-3 font-medium md:table-cell">{t.common.origin}</th>
                 <th className="px-3 py-3 font-medium">{t.containers.status}</th>
-                <th className="px-3 py-3 font-medium">{t.containers.linesCount}</th>
                 <th className="px-3 py-3 font-medium">{t.containers.arrivedM2}</th>
               </tr>
             </thead>
@@ -261,18 +362,22 @@ export default function ContainersPage() {
               {containers.map((container) => (
                 <tr key={container.id} className="border-b border-border/70">
                   <td className="px-3 py-3">
-                    <Link to={`/containers/${container.id}`} className="cursor-pointer font-medium text-teal-600 hover:underline">
+                    <Link
+                      to={`/containers/${container.id}`}
+                      className="cursor-pointer font-medium text-teal-600 hover:underline"
+                    >
                       {container.reference}
                     </Link>
                   </td>
+                  <td className="px-3 py-3">{typeLabel(container.type, t)}</td>
+                  <td className="px-3 py-3">{container.fournisseur?.name ?? t.common.dash}</td>
                   <td className="px-3 py-3">{container.arrival_date}</td>
-                  <td className="px-3 py-3">{container.origin}</td>
+                  <td className="hidden px-3 py-3 md:table-cell">{container.origin}</td>
                   <td className="px-3 py-3">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusColors[container.status]}`}>
                       {containerStatusLabel(container.status)}
                     </span>
                   </td>
-                  <td className="px-3 py-3">{container.stock_summary?.lines_count ?? container.items_count ?? 0}</td>
                   <td className="px-3 py-3 font-semibold text-teal-600">
                     {(container.stock_summary?.total_m2 ?? 0).toLocaleString('fr-FR')}
                   </td>

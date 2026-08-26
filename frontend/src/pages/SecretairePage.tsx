@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FilePlus, Layers, Package, Palette, Receipt, ShoppingCart, Users } from 'lucide-react'
+import { FilePlus, Layers, Package, Palette, ShoppingCart, Truck, Users } from 'lucide-react'
 import api from '../lib/api'
 import { useI18n } from '../context/LocaleContext'
 import type { Client, Container, Sale } from '../types'
@@ -42,11 +42,18 @@ export default function SecretairePage() {
       color: 'bg-teal-500',
     },
     {
-      to: '/fabric-types',
+      to: '/settings?tab=articles',
       icon: Palette,
-      title: t.secretaire.manageFabricTypes,
-      desc: t.secretaire.manageFabricTypesDesc,
+      title: t.settings.tabs.articles,
+      desc: t.fabricTypes.description,
       color: 'bg-violet-600',
+    },
+    {
+      to: '/settings?tab=fournisseurs',
+      icon: Truck,
+      title: t.settings.tabs.fournisseurs,
+      desc: t.fournisseurs.description,
+      color: 'bg-sky-600',
     },
     {
       to: '/clients',
@@ -68,13 +75,6 @@ export default function SecretairePage() {
       title: t.nav.stock,
       desc: t.secretaire.viewStockDesc,
       color: 'bg-emerald-600',
-    },
-    {
-      to: '/credits/new',
-      icon: Receipt,
-      title: t.nav.credits,
-      desc: t.credit.description,
-      color: 'bg-amber-500',
     },
     {
       to: '/invoices/generer',

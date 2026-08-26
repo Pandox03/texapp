@@ -35,6 +35,7 @@ class SaleFormController extends Controller
                         'composition',
                         'default_width_cm',
                         'default_gsm',
+                        'unit',
                         'parent_id',
                         'market_price_m2_mad',
                         'target_margin_pct',
@@ -78,6 +79,7 @@ class SaleFormController extends Controller
         return response()->json([
             'fabric_type_id' => (int) $data['fabric_type_id'],
             'fabric_type_name' => $context['fabric']['name'],
+            'unit' => $context['fabric']['unit'],
             'landed_cost_m2_mad' => $landed,
             'target_margin_pct' => $margin,
             'suggested_price_m2_mad' => $suggested,

@@ -15,6 +15,7 @@ class FabricType extends Model
         'composition',
         'default_width_cm',
         'default_gsm',
+        'unit',
         'description',
         'market_price_m2_mad',
         'target_margin_pct',
@@ -26,6 +27,16 @@ class FabricType extends Model
             'market_price_m2_mad' => 'decimal:2',
             'target_margin_pct' => 'decimal:2',
         ];
+    }
+
+    public function quantityUnit(): string
+    {
+        return \App\Support\QuantityUnit::normalize($this->unit ?? null);
+    }
+
+    public function quantityUnitLabel(): string
+    {
+        return \App\Support\QuantityUnit::label($this->unit ?? null);
     }
 
     public function parent(): BelongsTo

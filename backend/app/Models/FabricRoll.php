@@ -18,6 +18,7 @@ class FabricRoll extends Model
         'width_cm',
         'length_m',
         'quantity_m2',
+        'unit',
         'gross_weight_kg',
         'net_weight_kg',
         'gsm',
@@ -36,6 +37,11 @@ class FabricRoll extends Model
             'net_weight_kg' => 'decimal:2',
             'sold_at' => 'datetime',
         ];
+    }
+
+    public function quantityUnit(): string
+    {
+        return \App\Support\QuantityUnit::normalize($this->unit ?? null);
     }
 
     public static function calculateM2(int $widthCm, float $lengthM): float

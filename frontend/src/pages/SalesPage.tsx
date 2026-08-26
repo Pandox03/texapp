@@ -34,16 +34,10 @@ export default function SalesPage() {
         title={t.sales.title}
         description={t.sales.description}
         action={
-          <div className="flex flex-wrap gap-2">
-            <Link to="/credits/new" className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-surface">
-              <Plus size={16} />
-              {t.sales.newCredit}
-            </Link>
-            <Link to="/sales/new" className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white">
-              <Plus size={16} />
-              {t.sales.new}
-            </Link>
-          </div>
+          <Link to="/sales/new" className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white">
+            <Plus size={16} />
+            {t.sales.new}
+          </Link>
         }
       />
 

@@ -6,11 +6,8 @@ import {
   Layers,
   LayoutDashboard,
   Package,
-  Palette,
-  Receipt,
   Settings,
   ShoppingCart,
-  UserCog,
   Users,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -30,14 +27,11 @@ export default function AdminSidebar({ mobileOpen, onClose }: AdminSidebarProps)
     { to: '/', label: t.nav.dashboard, icon: LayoutDashboard, end: true },
     { to: '/containers', label: t.nav.containers, icon: Package },
     { to: '/stock', label: t.nav.stock, icon: Layers },
-    { to: '/fabric-types', label: t.nav.fabricTypes, icon: Palette },
     { to: '/sales', label: t.nav.sales, icon: ShoppingCart },
-    { to: '/credits/new', label: t.nav.credits, icon: Receipt },
     { to: '/invoices', label: t.nav.invoices, icon: FileText },
     { to: '/payments', label: t.nav.payments, icon: Banknote },
     { to: '/clients', label: t.nav.clients, icon: Users },
     { to: '/settings', label: t.nav.settings, icon: Settings },
-    { to: '/users', label: t.nav.users, icon: UserCog },
     { to: '/logs', label: t.nav.logs, icon: History },
   ]
 

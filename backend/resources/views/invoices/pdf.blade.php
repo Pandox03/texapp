@@ -265,7 +265,7 @@
                             ({{ $line['roll_count'] }} rouleau{{ $line['roll_count'] > 1 ? 'x' : '' }})
                         @endif
                     </td>
-                    <td class="center">m²</td>
+                    <td class="center">{{ $line['unit_label'] ?? 'm²' }}</td>
                     <td class="center">{{ number_format($line['quantity_m2'], 2, ',', ' ') }}</td>
                     <td class="right">{{ number_format($line['unit_price'], 2, ',', ' ') }}</td>
                     <td class="right">{{ number_format($line['line_total'], 2, ',', ' ') }}</td>

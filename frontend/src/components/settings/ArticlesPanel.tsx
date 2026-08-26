@@ -1,24 +1,26 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
-import api from '../lib/api'
-import { useI18n } from '../context/LocaleContext'
-import type { FabricType } from '../types'
-import Card from '../components/ui/Card'
-import PageHeader from '../components/ui/PageHeader'
+import api from '../../lib/api'
+import { useI18n } from '../../context/LocaleContext'
+import type { FabricType } from '../../types'
+import Card from '../ui/Card'
 
-export default function FabricTypesPage() {
+const emptyForm = {
+  name: '',
+  composition: '',
+  default_width_cm: '150',
+  default_gsm: '150',
+  unit: 'm2',
+  parent_id: '',
+  market_price_m2_mad: '',
+  target_margin_pct: '25',
+}
+
+export default function ArticlesPanel() {
   const { t } = useI18n()
   const [types, setTypes] = useState<FabricType[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({
-    name: '',
-    composition: '',
-    default_width_cm: '150',
-    default_gsm: '150',
-    parent_id: '',
-    market_price_m2_mad: '',
-    target_margin_pct: '25',
-  })
+  const [form, setForm] = useState(emptyForm)
 
   async function load() {
     const { data } = await api.get<FabricType[]>('/fabric-types')
@@ -36,39 +38,29 @@ export default function FabricTypesPage() {
       composition: form.composition || null,
       default_width_cm: form.default_width_cm ? Number(form.default_width_cm) : null,
       default_gsm: form.default_gsm ? Number(form.default_gsm) : null,
+      unit: form.unit || 'm2',
       parent_id: form.parent_id ? Number(form.parent_id) : null,
       market_price_m2_mad: form.market_price_m2_mad ? Number(form.market_price_m2_mad) : null,
       target_margin_pct: form.target_margin_pct ? Number(form.target_margin_pct) : null,
     })
     setShowForm(false)
-    setForm({
-      name: '',
-      composition: '',
-      default_width_cm: '150',
-      default_gsm: '150',
-      parent_id: '',
-      market_price_m2_mad: '',
-      target_margin_pct: '25',
-    })
+    setForm(emptyForm)
     load()
   }
 
   return (
     <div>
-      <PageHeader
-        title={t.fabricTypes.title}
-        description={t.fabricTypes.description}
-        action={
-          <button
-            type="button"
-            onClick={() => setShowForm(!showForm)}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white"
-          >
-            <Plus size={16} />
-            {t.fabricTypes.new}
-          </button>
-        }
-      />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">{t.fabricTypes.description}</p>
+        <button
+          type="button"
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white"
+        >
+          <Plus size={16} />
+          {t.fabricTypes.new}
+        </button>
+      </div>
 
       {showForm && (
         <Card className="mb-6">
@@ -110,8 +102,18 @@ export default function FabricTypesPage() {
               onChange={(e) => setForm({ ...form, default_gsm: e.target.value })}
               className="rounded-xl border border-border px-4 py-3"
             />
+            <select
+              value={form.unit}
+              onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              className="rounded-xl border border-border px-4 py-3"
+              required
+            >
+              <option value="m2">{t.fabricTypes.unitM2}</option>
+              <option value="kg">{t.fabricTypes.unitKg}</option>
+            </select>
+            <p className="text-xs text-muted md:col-span-2 -mt-2">{t.fabricTypes.unitHint}</p>
             <input
-              placeholder={t.fabricTypes.marketPrice}
+              placeholder={`${t.fabricTypes.marketPrice} (MAD/m²)`}
               value={form.market_price_m2_mad}
               onChange={(e) => setForm({ ...form, market_price_m2_mad: e.target.value })}
               className="rounded-xl border border-border px-4 py-3"
@@ -141,6 +143,7 @@ export default function FabricTypesPage() {
             <thead className="border-b border-border text-muted">
               <tr>
                 <th className="px-3 py-3">{t.common.name}</th>
+                <th className="px-3 py-3">{t.fabricTypes.unit}</th>
                 <th className="px-3 py-3">{t.fabricTypes.parent}</th>
                 <th className="px-3 py-3">{t.fabricTypes.composition}</th>
                 <th className="hidden px-3 py-3 sm:table-cell">{t.fabricTypes.width}</th>
@@ -153,6 +156,7 @@ export default function FabricTypesPage() {
               {types.map((type) => (
                 <tr key={type.id} className="border-b border-border/70">
                   <td className="px-3 py-3 font-medium">{type.name}</td>
+                  <td className="px-3 py-3">{type.unit === 'kg' ? 'kg' : 'm²'}*</td>
                   <td className="px-3 py-3">{type.parent?.name ?? t.common.dash}</td>
                   <td className="px-3 py-3">{type.composition ?? t.common.dash}</td>
                   <td className="hidden px-3 py-3 sm:table-cell">
@@ -160,13 +164,22 @@ export default function FabricTypesPage() {
                   </td>
                   <td className="hidden px-3 py-3 md:table-cell">{type.default_gsm ?? t.common.dash}</td>
                   <td className="px-3 py-3">
-                    {type.market_price_m2_mad != null ? `${type.market_price_m2_mad} MAD` : t.common.dash}
+                    {type.market_price_m2_mad != null
+                      ? `${type.market_price_m2_mad} MAD/${type.unit === 'kg' ? 'kg' : 'm²'}`
+                      : t.common.dash}
                   </td>
                   <td className="hidden px-3 py-3 lg:table-cell">
                     {type.target_margin_pct != null ? `${type.target_margin_pct}%` : t.common.dash}
                   </td>
                 </tr>
               ))}
+              {types.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-8 text-center text-muted">
+                    {t.common.noResults}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

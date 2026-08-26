@@ -6,8 +6,7 @@ import {
   Layers,
   LayoutDashboard,
   Package,
-  Palette,
-  Receipt,
+  Settings,
   ShoppingCart,
   Users,
 } from 'lucide-react'
@@ -27,14 +26,13 @@ export default function SecretaireSidebar({ mobileOpen, onClose }: SecretaireSid
   const links = [
     { to: '/', label: t.secretaire.home, icon: LayoutDashboard, end: true },
     { to: '/containers', label: t.nav.containers, icon: Package },
-    { to: '/fabric-types', label: t.nav.fabricTypes, icon: Palette },
     { to: '/clients', label: t.nav.clients, icon: Users },
     { to: '/sales', label: t.nav.sales, icon: ShoppingCart },
-    { to: '/credits/new', label: t.nav.credits, icon: Receipt },
     { to: '/stock', label: t.nav.stock, icon: Layers },
     { to: '/invoices', label: t.nav.invoices, icon: FileText },
     { to: '/invoices/generer', label: t.secretaire.generateInvoice, icon: FilePlus },
     { to: '/payments', label: t.nav.payments, icon: Banknote },
+    { to: '/settings', label: t.nav.settings, icon: Settings },
   ]
 
   return (

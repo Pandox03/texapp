@@ -17,6 +17,8 @@ class Client extends Model
         'city',
         'category',
         'ice_number',
+        'cin',
+        'rc',
         'credit_limit',
         'payment_terms_days',
         'notes',

@@ -20,9 +20,21 @@ class ContainerItemController extends Controller
             'color_code' => ['nullable', 'string', 'max:50'],
             'color_name' => ['nullable', 'string', 'max:100'],
             'quantity_m2' => ['required', 'numeric', 'min:0.01'],
+            'unit' => ['nullable', 'in:m2,kg'],
             'estimated_rolls' => ['nullable', 'integer', 'min:0'],
             'notes' => ['nullable', 'string'],
         ]);
+
+        $data['unit'] = \App\Support\QuantityUnit::normalize($data['unit'] ?? null);
+        $fabric = \App\Models\FabricType::query()->find($data['fabric_type_id']);
+        if ($data['unit'] === \App\Support\QuantityUnit::KG && ! $fabric?->default_gsm) {
+            return response()->json([
+                'message' => sprintf(
+                    'Le grammage (g/m²) est requis pour enregistrer « %s » en kg.',
+                    $fabric?->name ?? 'cet article',
+                ),
+            ], 422);
+        }
 
         $colorCode = trim($data['color_code'] ?? '') ?: '-';
 

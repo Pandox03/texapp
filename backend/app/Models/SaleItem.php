@@ -13,6 +13,7 @@ class SaleItem extends Model
         'fabric_type_id',
         'unit_price',
         'quantity_m2',
+        'unit',
         'line_total',
     ];
 
@@ -23,6 +24,11 @@ class SaleItem extends Model
             'quantity_m2' => 'decimal:2',
             'line_total' => 'decimal:2',
         ];
+    }
+
+    public function quantityUnit(): string
+    {
+        return \App\Support\QuantityUnit::normalize($this->unit ?? null);
     }
 
     public function sale(): BelongsTo

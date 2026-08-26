@@ -3,11 +3,13 @@ import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Plus } from 'lucide-react'
 import api from '../lib/api'
 import { useI18n } from '../context/LocaleContext'
+import { unitLabel } from '../lib/units'
 import type { Container, FabricType } from '../types'
 import Card from '../components/ui/Card'
 
 export default function ContainerDetailPage() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
+  const loc = locale === 'ar' ? 'ar' : 'fr'
   const { id } = useParams()
   const [container, setContainer] = useState<Container | null>(null)
   const [fabricTypes, setFabricTypes] = useState<FabricType[]>([])
@@ -16,6 +18,7 @@ export default function ContainerDetailPage() {
   const [form, setForm] = useState({
     fabric_type_id: '',
     quantity_m2: '',
+    unit: 'm2' as 'm2' | 'kg',
     estimated_rolls: '',
   })
   const [costForm, setCostForm] = useState({
@@ -79,10 +82,11 @@ export default function ContainerDetailPage() {
       await api.post(`/containers/${id}/items`, {
         fabric_type_id: Number(form.fabric_type_id),
         quantity_m2: Number(form.quantity_m2),
+        unit: form.unit,
         estimated_rolls: form.estimated_rolls ? Number(form.estimated_rolls) : null,
       })
       setShowForm(false)
-      setForm({ fabric_type_id: '', quantity_m2: '', estimated_rolls: '' })
+      setForm({ fabric_type_id: '', quantity_m2: '', unit: 'm2', estimated_rolls: '' })
       load()
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
@@ -104,7 +108,12 @@ export default function ContainerDetailPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-navy-900">{container.reference}</h1>
         <p className="text-muted">
-          {t.containers.arrivedOn} {container.arrival_date} · {container.origin}
+          {container.type === 'local' ? t.containers.typeLocal : t.containers.typeContainer}
+          {' · '}
+          {t.containers.fournisseur}: {container.fournisseur?.name ?? t.common.dash}
+          {' · '}
+          {t.containers.arrivedOn} {container.arrival_date}
+          {container.type === 'container' && container.origin ? ` · ${container.origin}` : ''}
         </p>
       </div>
 
@@ -167,8 +176,28 @@ export default function ContainerDetailPage() {
                 </option>
               ))}
             </select>
+            <div className="flex gap-2 md:col-span-2">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, unit: 'm2' })}
+                className={`cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold ${
+                  form.unit === 'm2' ? 'bg-teal-500 text-white' : 'border border-border'
+                }`}
+              >
+                m²
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, unit: 'kg' })}
+                className={`cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold ${
+                  form.unit === 'kg' ? 'bg-teal-500 text-white' : 'border border-border'
+                }`}
+              >
+                kg
+              </button>
+            </div>
             <input
-              placeholder={t.containers.quantityM2}
+              placeholder={`${t.containers.quantityM2} (${unitLabel(form.unit, loc)})`}
               type="number"
               step="0.01"
               min="0.01"
@@ -199,7 +228,8 @@ export default function ContainerDetailPage() {
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-border text-muted">
               <tr>
-                <th className="px-3 py-3">{t.containers.type}</th>
+                <th className="px-3 py-3">{t.settings.tabs.articles}</th>
+                <th className="px-3 py-3">{t.stock.unitCol}</th>
                 <th className="px-3 py-3">{t.containers.arrivedM2}</th>
                 <th className="px-3 py-3">{t.containers.estRolls}</th>
               </tr>
@@ -207,12 +237,13 @@ export default function ContainerDetailPage() {
             <tbody>
               {(!container.items || container.items.length === 0) && (
                 <tr>
-                  <td colSpan={3} className="px-3 py-8 text-center text-muted">{t.containers.noStockLines}</td>
+                  <td colSpan={4} className="px-3 py-8 text-center text-muted">{t.containers.noStockLines}</td>
                 </tr>
               )}
               {container.items?.map((item) => (
                 <tr key={item.id} className="border-b border-border/70">
                   <td className="px-3 py-3 font-medium">{item.fabric_type?.name}</td>
+                  <td className="px-3 py-3">{unitLabel(item.unit ?? item.fabric_type?.unit, loc)}</td>
                   <td className="px-3 py-3">{Number(item.quantity_m2).toLocaleString('fr-FR')}</td>
                   <td className="px-3 py-3">{item.estimated_rolls ?? t.common.dash}</td>
                 </tr>

@@ -30,6 +30,7 @@ class PricingContextService
                 'id' => $fabric->id,
                 'name' => $fabric->name,
                 'composition' => $fabric->composition,
+                'unit' => $fabric->quantityUnit(),
                 'market_price_m2_mad' => $fabric->market_price_m2_mad !== null
                     ? (float) $fabric->market_price_m2_mad
                     : null,

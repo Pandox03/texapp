@@ -93,6 +93,7 @@ class BillingService
             ->where('client_id', $client->id)
             ->where('status', 'confirmed')
             ->whereNull('sale_id')
+            ->whereNull('invoice_id')
             ->orderBy('payment_date')
             ->orderBy('id')
             ->get();
@@ -163,6 +164,15 @@ class BillingService
             ->sum('amount'), 2);
     }
 
+    public function invoiceTargetedPaidTowardSale(Sale $sale): float
+    {
+        return round((float) Payment::query()
+            ->where('status', 'confirmed')
+            ->whereNotNull('invoice_id')
+            ->whereHas('invoice', fn ($q) => $q->where('sale_id', $sale->id))
+            ->sum('amount'), 2);
+    }
+
     public function salePaidAmount(Sale $sale, ?array $allocations = null): float
     {
         if ($sale->sale_type === 'legacy_credit') {
@@ -172,7 +182,7 @@ class BillingService
         $allocations ??= $this->fifoStockSaleAllocations($sale->client);
         $fifo = (float) ($allocations[$sale->id] ?? 0);
 
-        return round($fifo + $this->targetedPaidAmount($sale), 2);
+        return round($fifo + $this->targetedPaidAmount($sale) + $this->invoiceTargetedPaidTowardSale($sale), 2);
     }
 
     public function saleBalanceDue(Sale $sale, ?array $allocations = null): float
@@ -182,8 +192,9 @@ class BillingService
 
     /**
      * Allocate confirmed payments to invoices.
-     * Credit-targeted payments (sale_id set) go only to that sale's invoices first;
-     * untagged payments FIFO across remaining invoice balances.
+     * 1) invoice_id-targeted payments go only to that invoice
+     * 2) sale_id-targeted payments go to that sale's invoices
+     * 3) untagged payments FIFO across remaining invoice balances
      *
      * @return array<int, float> invoice_id => allocated amount
      */
@@ -204,7 +215,8 @@ class BillingService
             ->where('client_id', $client->id)
             ->orderBy('invoice_date')
             ->orderBy('id')
-            ->get();
+            ->get()
+            ->keyBy('id');
 
         $allocations = [];
         $remainingByInvoice = [];
@@ -216,7 +228,22 @@ class BillingService
             $invoicesBySale[$invoice->sale_id][] = $invoice;
         }
 
-        foreach ($payments->whereNotNull('sale_id') as $payment) {
+        foreach ($payments->whereNotNull('invoice_id') as $payment) {
+            $invoiceId = (int) $payment->invoice_id;
+            if (! isset($remainingByInvoice[$invoiceId])) {
+                continue;
+            }
+
+            $canApply = min((float) $payment->amount, $remainingByInvoice[$invoiceId]);
+            if ($canApply <= 0) {
+                continue;
+            }
+
+            $allocations[$invoiceId] += $canApply;
+            $remainingByInvoice[$invoiceId] -= $canApply;
+        }
+
+        foreach ($payments->whereNull('invoice_id')->whereNotNull('sale_id') as $payment) {
             $left = (float) $payment->amount;
             $saleInvoices = $invoicesBySale[$payment->sale_id] ?? [];
 
@@ -237,7 +264,7 @@ class BillingService
             }
         }
 
-        foreach ($payments->whereNull('sale_id') as $payment) {
+        foreach ($payments->whereNull('invoice_id')->whereNull('sale_id') as $payment) {
             $left = (float) $payment->amount;
 
             foreach ($invoices as $invoice) {
@@ -340,6 +367,52 @@ class BillingService
         }
     }
 
+    /**
+     * After a stock return shrinks a sale total, reduce or remove invoices so invoiced ≤ sale total.
+     */
+    public function reconcileSaleInvoicesAfterAmountChange(Sale $sale): void
+    {
+        $sale->loadMissing(['invoices', 'client']);
+        $target = round((float) $sale->total_amount, 2);
+        $invoices = $sale->invoices()->orderByDesc('invoice_date')->orderByDesc('id')->get();
+        $invoiced = round((float) $invoices->sum('total'), 2);
+
+        if ($invoiced > $target + 0.01) {
+            $excess = round($invoiced - $target, 2);
+
+            foreach ($invoices as $invoice) {
+                if ($excess <= 0.01) {
+                    break;
+                }
+
+                $invTotal = round((float) $invoice->total, 2);
+
+                if ($invTotal <= $excess + 0.01) {
+                    $excess = round($excess - $invTotal, 2);
+                    // Keep payment history: detach invoice link then delete empty invoice shell.
+                    Payment::query()->where('invoice_id', $invoice->id)->update(['invoice_id' => null]);
+                    $invoice->delete();
+
+                    continue;
+                }
+
+                $newTotal = round($invTotal - $excess, 2);
+                $breakdown = $this->splitTtc($newTotal);
+                $invoice->update([
+                    'subtotal' => $breakdown['subtotal'],
+                    'tax_rate' => $breakdown['tax_rate'],
+                    'tax_amount' => $breakdown['tax_amount'],
+                    'total' => $breakdown['total'],
+                ]);
+                $excess = 0.0;
+            }
+        }
+
+        if ($sale->client) {
+            $this->syncClientBilling($sale->client);
+        }
+    }
+
     public function syncSaleFromInvoices(?Sale $sale, ?array $allocations = null): void
     {
         if (! $sale) {
@@ -367,10 +440,30 @@ class BillingService
         ]);
     }
 
-    public function validateClientPaymentAmount(Client $client, float $amount, ?Sale $sale = null): void
-    {
+    public function validateClientPaymentAmount(
+        Client $client,
+        float $amount,
+        ?Sale $sale = null,
+        ?Invoice $invoice = null,
+    ): void {
         if ($amount <= 0) {
             throw new InvalidArgumentException('Le montant doit être supérieur à zéro.');
+        }
+
+        if ($invoice) {
+            if ($invoice->client_id !== $client->id) {
+                throw new InvalidArgumentException('Cette facture n\'appartient pas à ce client.');
+            }
+
+            $due = $this->invoiceRemainingToPay($invoice);
+
+            if ($amount > $due + 0.01) {
+                throw new InvalidArgumentException(
+                    "Le montant dépasse le reste à payer sur cette facture ({$due} MAD)."
+                );
+            }
+
+            return;
         }
 
         if ($sale) {
@@ -435,7 +528,16 @@ class BillingService
             }))
             ->sum('amount'), 2);
 
-        $paidOnStockSales = round($paidOnStockFifo + $paidOnStockTargeted, 2);
+        $paidOnStockViaInvoice = round((float) Payment::query()
+            ->where('client_id', $client->id)
+            ->where('status', 'confirmed')
+            ->whereNotNull('invoice_id')
+            ->whereHas('invoice.sale', fn ($q) => $q->where(function ($q2) {
+                $q2->where('sale_type', 'stock')->orWhereNull('sale_type');
+            }))
+            ->sum('amount'), 2);
+
+        $paidOnStockSales = round($paidOnStockFifo + $paidOnStockTargeted + $paidOnStockViaInvoice, 2);
 
         $paidOnCredits = round((float) Payment::query()
             ->where('client_id', $client->id)

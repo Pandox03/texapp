@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import api from '../lib/api'
 import { useI18n } from '../context/LocaleContext'
+import { unitLabel } from '../lib/units'
 import type { DashboardData } from '../types'
 import BarChart from '../components/charts/BarChart'
 import DonutChart from '../components/charts/DonutChart'
@@ -50,7 +51,8 @@ function severityClass(severity: 'high' | 'medium') {
 }
 
 export default function DashboardPage() {
-  const { t, containerStatusLabel, formatDateShort, formatNumber } = useI18n()
+  const { t, locale, containerStatusLabel, formatDateShort, formatNumber } = useI18n()
+  const loc = locale === 'ar' ? 'ar' : 'fr'
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -305,7 +307,7 @@ export default function DashboardPage() {
                       <div className="mb-1 flex justify-between gap-2 text-sm">
                         <span className="font-medium text-navy-900" title={type.name}>{type.name}</span>
                         <span className={`shrink-0 ${type.is_low ? 'font-semibold text-red-600' : 'text-muted'}`}>
-                          {type.available_m2.toLocaleString('fr-FR')} m² dispo.
+                          {type.available_m2.toLocaleString('fr-FR')} {unitLabel(type.unit, loc)} dispo.
                           {type.is_low && ` · ${t.dashboard.stockLowThreshold}`}
                         </span>
                       </div>
@@ -474,7 +476,8 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-muted">
-                    {item.ratio}% restant · {item.available_m2.toLocaleString('fr-FR')} m²
+                    {item.ratio}% restant · {item.available_m2.toLocaleString('fr-FR')}{' '}
+                    {unitLabel(item.unit, loc)}
                   </p>
                 </Link>
               ))}

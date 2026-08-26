@@ -6,14 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Services\ActivityLogger;
 use App\Services\BillingService;
+use App\Services\ClientStatementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ClientController extends Controller
 {
     public function __construct(
         private BillingService $billing,
+        private ClientStatementService $statements,
         private ActivityLogger $logger,
     ) {}
 
@@ -26,6 +30,8 @@ class ClientController extends Controller
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%")
                     ->orWhere('ice_number', 'like', "%{$search}%")
+                    ->orWhere('cin', 'like', "%{$search}%")
+                    ->orWhere('rc', 'like', "%{$search}%")
                     ->orWhere('city', 'like', "%{$search}%");
             });
         }
@@ -126,6 +132,7 @@ class ClientController extends Controller
                 $data['proof_document_url'] = $payment->proof_document
                     ? url("/api/payments/{$payment->id}/proof")
                     : null;
+                $data['auto_allocated'] = $payment->invoice_id === null && $payment->sale_id === null;
 
                 return $data;
             });
@@ -163,6 +170,8 @@ class ClientController extends Controller
             'city' => ['nullable', 'string', 'max:100'],
             'category' => ['nullable', 'string', 'max:100'],
             'ice_number' => ['nullable', 'string', 'max:50'],
+            'cin' => ['nullable', 'string', 'max:50', 'required_without:rc'],
+            'rc' => ['nullable', 'string', 'max:50', 'required_without:cin'],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'notes' => ['nullable', 'string'],
@@ -195,6 +204,8 @@ class ClientController extends Controller
             'city' => ['nullable', 'string', 'max:100'],
             'category' => ['nullable', 'string', 'max:100'],
             'ice_number' => ['nullable', 'string', 'max:50'],
+            'cin' => ['nullable', 'string', 'max:50', 'required_without:rc'],
+            'rc' => ['nullable', 'string', 'max:50', 'required_without:cin'],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'notes' => ['nullable', 'string'],
@@ -233,5 +244,18 @@ class ClientController extends Controller
         );
 
         return response()->json(null, 204);
+    }
+
+    public function downloadStatementPdf(Client $client): Response
+    {
+        $slug = preg_replace('/[^a-zA-Z0-9_-]+/', '-', $client->name) ?: 'client';
+        $filename = 'etat-client-'.$slug.'-'.now()->format('Y-m-d').'.pdf';
+
+        return $this->statements->generatePdf($client)->download($filename);
+    }
+
+    public function downloadStatementExcel(Client $client): StreamedResponse
+    {
+        return $this->statements->downloadExcel($client);
     }
 }
