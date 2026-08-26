@@ -328,7 +328,7 @@ export default function ClientDetailPage() {
       link.remove()
       URL.revokeObjectURL(url)
     } catch (err: unknown) {
-      let msg = t.clients.statementError
+      let msg: string = t.clients.statementError
       if (err instanceof Error && err.message) {
         msg = err.message
       }
